@@ -34,12 +34,20 @@ jobs:
         run: npm run build
 
       - name: Ensure Pages project exists
-        # The first deploy needs the project to exist. Later runs find it and skip creation.
+        # Create the project on the first run. If it already exists, the API
+        # answers 8000002 ("already exists"), which is the steady state.
         run: |
-          if npx wrangler pages project list --json | grep -q '"name": *"jules-web"'; then
-            echo "Pages project jules-web already exists."
-          else
-            npx wrangler pages project create jules-web --production-branch main
+          set +e
+          output=$(npx wrangler pages project create jules-web --production-branch main 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            if printf '%s' "$output" | grep -Eqi 'already exists|8000002'; then
+              echo "Pages project jules-web already exists."
+            else
+              printf '%s\n' "$output"
+              exit "$status"
+            fi
           fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
