@@ -664,6 +664,15 @@ code {
   line-height: 1.55;
 }
 
+.run-state-target {
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .run-state-link {
   display: inline-block;
   margin-top: 6px;

@@ -154,7 +154,7 @@ export default function PromptCard({
         </StatusBanner>
       ) : null}
 
-      {run.status === 'success' && run.result ? (
+      {run.status === 'success' && run.result && runState.status === 'idle' ? (
         <StatusBanner kind="success" title={`Run queued for ${run.result.repo}.`}>
           <p className="banner-detail">
             {run.result.branch ? (
@@ -187,6 +187,19 @@ export default function PromptCard({
             <p className="run-state-detail">
               {runState.status === 'error' ? runState.error : copy.detail}
             </p>
+            {run.result ? (
+              <p className="run-state-target">
+                {run.result.repo}
+                {run.result.branch ? (
+                  <>
+                    {' · '}
+                    commits to <code>{run.result.branch}</code>
+                  </>
+                ) : (
+                  ' · new branch and pull request'
+                )}
+              </p>
+            ) : null}
             {runState.run?.htmlUrl || actionsUrl ? (
               <a
                 className="run-state-link"
