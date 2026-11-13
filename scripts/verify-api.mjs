@@ -181,12 +181,14 @@ function openSealed(sealed) {
   assert.equal(result.data.ok, true);
   assert.equal(result.data.ref, 'main');
   assert.equal(result.data.model, DEFAULT_GEMINI_MODEL);
+  assert.equal(result.data.branch, null);
 
   const dispatch = calls.find((call) => call.method === 'POST' && call.href.endsWith('/dispatches'));
   const payload = JSON.parse(dispatch.body);
   assert.equal(payload.ref, 'main');
   assert.equal(payload.inputs.user_prompt, 'Add a setup section to the README');
   assert.equal('gemini_model' in payload.inputs, false, 'blank model must use the workflow default');
+  assert.equal('branch' in payload.inputs, false, 'blank branch must open a new PR');
 
   console.log('run dispatch OK');
 }
@@ -209,6 +211,61 @@ function openSealed(sealed) {
   assert.equal(payload.inputs.gemini_model, 'gemini-3.8-flash');
 
   console.log('run with model OK');
+}
+
+// Run: an existing branch is updated instead of opening a new PR.
+{
+  const calls = installGithubMock({ fileExists: true });
+  const result = await post(run, {
+    repo: 'acme/widgets',
+    prompt: 'fix the typo',
+    branch: 'jules/run-43373690604',
+    userToken: TOKEN,
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.data.branch, 'jules/run-43373690604');
+
+  const dispatch = calls.find((call) => call.method === 'POST' && call.href.endsWith('/dispatches'));
+  const payload = JSON.parse(dispatch.body);
+  assert.equal(payload.ref, 'main', 'workflow file must come from the default branch');
+  assert.equal(payload.inputs.branch, 'jules/run-43373690604');
+
+  console.log('run updates branch OK');
+}
+
+// Run: malformed branch names are rejected before any GitHub call.
+{
+  const calls = installGithubMock({ fileExists: true });
+  for (const branch of ['bad branch', '..', '-nope', 'trailing/', 'refs/heads/main']) {
+    const result = await post(run, {
+      repo: 'acme/widgets',
+      prompt: 'hello',
+      branch,
+      userToken: TOKEN,
+    });
+    assert.equal(result.status, 400, `branch ${branch} must be rejected`);
+  }
+  assert.equal(calls.length, 0, 'invalid branch must not call GitHub');
+
+  console.log('run rejects bad branch OK');
+}
+
+// Run: the default branch cannot be used as the update target.
+{
+  const calls = installGithubMock({ fileExists: true });
+  const result = await post(run, {
+    repo: 'acme/widgets',
+    prompt: 'hello',
+    branch: 'main',
+    userToken: TOKEN,
+  });
+
+  assert.equal(result.status, 400);
+  assert.match(result.data.error, /must differ from the default branch/);
+  assert.equal(calls.length, 1, 'only repository metadata is read before the rejection');
+
+  console.log('run rejects default branch OK');
 }
 
 // Run: a malformed model is rejected before any GitHub call.

@@ -7,6 +7,8 @@ export default function PromptCard({
   onPromptChange,
   model,
   onModelChange,
+  branch,
+  onBranchChange,
   repo,
   onRun,
   run,
@@ -56,6 +58,26 @@ export default function PromptCard({
         </p>
       </div>
 
+      <div className="field">
+        <label className="label" htmlFor="branch-input">
+          Branch to update
+        </label>
+        <input
+          id="branch-input"
+          className="input"
+          type="text"
+          value={branch}
+          placeholder="jules/run-43373690604"
+          onChange={(event) => onBranchChange(event.target.value)}
+          spellCheck="false"
+          autoComplete="off"
+        />
+        <p className="hint">
+          Optional. An existing pull request head branch to commit to. Blank creates a new branch
+          and opens a new pull request.
+        </p>
+      </div>
+
       <dl className="target" aria-label="Dispatch target">
         <div className="target-row">
           <dt>Repository</dt>
@@ -73,8 +95,8 @@ export default function PromptCard({
 
       <div className="run-row">
         <p className="hint">
-          Dispatches the workflow with your prompt and model as inputs. The workflow must exist on
-          the ref shown above.
+          Dispatches the workflow from the default branch. If you set a branch above, changes are
+          committed there; otherwise the run opens a new pull request.
         </p>
         <button
           type="button"
@@ -107,15 +129,24 @@ export default function PromptCard({
             run.result.model ? ` using ${run.result.model}` : ''
           }. GitHub returned 204.`}
         >
-          <p className="banner-detail">
-            The run is queued now. If the agent changes files, it commits them to a new branch and
-            opens a pull request.{' '}
-            {actionsUrl ? (
-              <a href={actionsUrl} target="_blank" rel="noreferrer">
-                Open the Actions tab
-              </a>
-            ) : null}
-          </p>
+        <p className="banner-detail">
+          {run.result.branch ? (
+            <>
+              The run is queued now. Changes will be committed to{' '}
+              <code>{run.result.branch}</code>, and the pull request will update automatically.
+            </>
+          ) : (
+            <>
+              The run is queued now. If the agent changes files, it commits them to a new branch and
+              opens a pull request.
+            </>
+          )}{' '}
+          {actionsUrl ? (
+            <a href={actionsUrl} target="_blank" rel="noreferrer">
+              Open the Actions tab
+            </a>
+          ) : null}
+        </p>
         </StatusBanner>
       ) : null}
     </section>

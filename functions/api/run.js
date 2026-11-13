@@ -13,10 +13,14 @@ const WORKFLOW_FILE = 'jules-web-agent.yml';
 const MAX_PROMPT_LENGTH = 100_000;
 const MAX_MODEL_LENGTH = 100;
 const MODEL_PATTERN = /^[A-Za-z0-9._:-]+$/;
+const MAX_BRANCH_LENGTH = 255;
+const BRANCH_PATTERN = /^(?!-)[A-Za-z0-9._/-]+$/;
 
 export async function onRequestPost(context) {
   const body = await readJson(context.request);
-  if (!body) return fail('Expected a JSON body with { repo, prompt, userToken, model? }.', 400);
+  if (!body) {
+    return fail('Expected a JSON body with { repo, prompt, userToken, model?, branch? }.', 400);
+  }
 
   const slug = parseRepoSlug(body.repo);
   if (!slug) return fail('repo must use the "owner/name" form.', 400);
@@ -38,16 +42,31 @@ export async function onRequestPost(context) {
     return fail('Model must use only letters, digits, dots, colons, hyphens, or underscores.', 400);
   }
 
+  const branch = typeof body.branch === 'string' ? body.branch.trim() : '';
+  if (branch.startsWith('refs/')) {
+    return fail('Branch must be a branch name, not a full ref.', 400);
+  }
+  if (branch.length > MAX_BRANCH_LENGTH) {
+    return fail(`Branch is limited to ${MAX_BRANCH_LENGTH} characters.`, 400);
+  }
+  if (branch && (!BRANCH_PATTERN.test(branch) || branch.includes('..') || branch.endsWith('/'))) {
+    return fail('Branch must use only letters, digits, dots, slashes, hyphens, or underscores.', 400);
+  }
+
   const repoPath = `/repos/${slug.owner}/${slug.name}`;
   const repoResponse = await githubFetch(token, repoPath);
   if (!repoResponse.ok) return githubFailure('read repository metadata', repoResponse);
   const repo = await repoResponse.json();
   const ref = repo.default_branch;
   if (!ref) return fail('GitHub did not report a default branch for this repository.', 502);
+  if (branch && branch === ref) {
+    return fail('Branch must differ from the default branch.', 400);
+  }
 
-  // Omit gemini_model when blank so the workflow's default applies.
+  // Omit inputs when blank so the workflow defaults apply.
   const inputs = { user_prompt: prompt };
   if (model) inputs.gemini_model = model;
+  if (branch) inputs.branch = branch;
 
   const dispatchResponse = await githubFetch(
     token,
@@ -63,6 +82,7 @@ export async function onRequestPost(context) {
       repo: `${slug.owner}/${slug.name}`,
       ref,
       model: model || DEFAULT_GEMINI_MODEL,
+      branch: branch || null,
       workflowPath: WORKFLOW_PATH,
     });
   }

@@ -62,8 +62,12 @@ assert.ok(
   'workflow template must pass the model input to the action',
 );
 assert.ok(
-  WORKFLOW_YAML.includes('git push --set-upstream origin "$branch"'),
+  WORKFLOW_YAML.includes('push_args=(--set-upstream origin "$branch")'),
   'workflow template must push the agent branch',
+);
+assert.ok(
+  WORKFLOW_YAML.includes('push_args=(origin "$branch")'),
+  'workflow template must push to an existing branch',
 );
 assert.ok(
   WORKFLOW_YAML.includes('gh pr create'),
@@ -80,6 +84,14 @@ assert.ok(
 assert.ok(
   WORKFLOW_YAML.includes('https://jules-web.pages.dev'),
   'PR body must credit the web app',
+);
+assert.ok(
+  WORKFLOW_YAML.includes('ref: ${{ inputs.branch || github.ref }}'),
+  'checkout must honour the branch input',
+);
+assert.ok(
+  WORKFLOW_YAML.includes('UPDATE_BRANCH: ${{ inputs.branch }}'),
+  'commit step must receive the branch input',
 );
 
 console.log('crypto round-trip OK');

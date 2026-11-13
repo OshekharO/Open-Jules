@@ -16,6 +16,11 @@ on:
         required: false
         default: '${DEFAULT_GEMINI_MODEL}'
         type: string
+      branch:
+        description: 'Existing branch to update (blank opens a new PR)'
+        required: false
+        default: ''
+        type: string
 jobs:
   run-gemini:
     runs-on: ubuntu-latest
@@ -30,6 +35,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: \${{ inputs.branch || github.ref }}
       - uses: google-github-actions/run-gemini-cli@v0
         with:
           gemini_api_key: \${{ secrets.GEMINI_API_KEY }}
@@ -43,6 +49,7 @@ jobs:
         env:
           GH_TOKEN: \${{ github.token }}
           USER_PROMPT: \${{ inputs.user_prompt }}
+          UPDATE_BRANCH: \${{ inputs.branch }}
         run: |
           set -euo pipefail
 
@@ -50,18 +57,31 @@ jobs:
           printf '%s\\n' '.gemini/' 'gemini-artifacts/' 'gha-creds-*.json' '__pycache__/' '*.pyc' 'node_modules/' >> .git/info/exclude
 
           if [[ -z "$(git status --porcelain)" ]]; then
-            echo 'Gemini CLI made no file changes; skipping pull request.'
+            echo 'Gemini CLI made no file changes; skipping commit.'
             exit 0
           fi
 
           git config user.name 'jules-web[bot]'
           git config user.email 'jules-web[bot]@users.noreply.github.com'
 
-          branch="jules/run-$GITHUB_RUN_ID"
-          git checkout -b "$branch"
+          if [[ -n "$UPDATE_BRANCH" ]]; then
+            branch="$UPDATE_BRANCH"
+            git checkout "$branch"
+            push_args=(origin "$branch")
+          else
+            branch="jules/run-$GITHUB_RUN_ID"
+            git checkout -b "$branch"
+            push_args=(--set-upstream origin "$branch")
+          fi
+
           git add -A
           git commit -m "Apply Gemini CLI changes from run $GITHUB_RUN_ID [skip ci]"
-          git push --set-upstream origin "$branch"
+          git push "\${push_args[@]}"
+
+          if [[ -n "$UPDATE_BRANCH" ]]; then
+            echo "Committed to $branch."
+            exit 0
+          fi
 
           # Bash substring, not \`head\`: head closes the pipe and pipefail turns
           # the resulting SIGPIPE into a step failure for large prompts.

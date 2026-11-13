@@ -12,6 +12,7 @@ export default function App() {
   const [geminiKey, setGeminiKey] = useState('');
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState('');
+  const [branch, setBranch] = useState('');
 
   const [repos, setRepos] = useState([]);
   const [repoFullName, setRepoFullName] = useState('');
@@ -69,6 +70,7 @@ export default function App() {
         repo: repo.fullName,
         prompt,
         model: model.trim(),
+        branch: branch.trim(),
         userToken: token.trim(),
       });
       setRun({ status: 'success', result: data, error: null });
@@ -152,6 +154,8 @@ export default function App() {
             onPromptChange={setPrompt}
             model={model}
             onModelChange={setModel}
+            branch={branch}
+            onBranchChange={setBranch}
             repo={repo}
             onRun={handleRun}
             run={run}

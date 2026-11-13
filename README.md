@@ -6,7 +6,7 @@ The flow is three steps:
 
 1. Enter a GitHub token and a Gemini API key.
 2. Pick a repository and run **Setup repo**. This writes the encrypted `GEMINI_API_KEY` repository secret and installs `.github/workflows/jules-web-agent.yml` on the repository's default branch.
-3. Enter a prompt, optionally set a model, and run **Run task**. This dispatches the workflow, which edits the repository and opens a pull request with the changes.
+3. Enter a prompt, optionally set a model and an existing branch to update, and run **Run task**. This dispatches the workflow, which edits the repository and either opens a pull request or commits to the existing PR branch.
 
 ## Stack
 
@@ -118,6 +118,11 @@ on:
         required: false
         default: 'gemini-3.5-flash-lite'
         type: string
+      branch:
+        description: 'Existing branch to update (blank opens a new PR)'
+        required: false
+        default: ''
+        type: string
 jobs:
   run-gemini:
     runs-on: ubuntu-latest
@@ -125,12 +130,14 @@ jobs:
       contents: write
       pull-requests: write
     env:
-      # Gemini CLI refuses to run in an untrusted directory.
+      # Gemini CLI refuses to run in an untrusted directory. GitHub Actions
+      # checkouts are always untrusted, so mark the workspace trusted.
       GEMINI_CLI_TRUST_WORKSPACE: 'true'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.branch || github.ref }}
       - uses: google-github-actions/run-gemini-cli@v0
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
@@ -144,6 +151,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           USER_PROMPT: ${{ inputs.user_prompt }}
+          UPDATE_BRANCH: ${{ inputs.branch }}
         run: |
           set -euo pipefail
 
@@ -151,18 +159,31 @@ jobs:
           printf '%s\n' '.gemini/' 'gemini-artifacts/' 'gha-creds-*.json' '__pycache__/' '*.pyc' 'node_modules/' >> .git/info/exclude
 
           if [[ -z "$(git status --porcelain)" ]]; then
-            echo 'Gemini CLI made no file changes; skipping pull request.'
+            echo 'Gemini CLI made no file changes; skipping commit.'
             exit 0
           fi
 
           git config user.name 'jules-web[bot]'
           git config user.email 'jules-web[bot]@users.noreply.github.com'
 
-          branch="jules/run-$GITHUB_RUN_ID"
-          git checkout -b "$branch"
+          if [[ -n "$UPDATE_BRANCH" ]]; then
+            branch="$UPDATE_BRANCH"
+            git checkout "$branch"
+            push_args=(origin "$branch")
+          else
+            branch="jules/run-$GITHUB_RUN_ID"
+            git checkout -b "$branch"
+            push_args=(--set-upstream origin "$branch")
+          fi
+
           git add -A
           git commit -m "Apply Gemini CLI changes from run $GITHUB_RUN_ID [skip ci]"
-          git push --set-upstream origin "$branch"
+          git push "${push_args[@]}"
+
+          if [[ -n "$UPDATE_BRANCH" ]]; then
+            echo "Committed to $branch."
+            exit 0
+          fi
 
           # Bash substring, not `head`: head closes the pipe and pipefail turns
           # the resulting SIGPIPE into a step failure for large prompts.
@@ -171,13 +192,19 @@ jobs:
           gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title "$title" --body "This PR was created with [Jules Web](https://jules-web.pages.dev). Workflow run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 ```
 
-After the CLI finishes, the second step checks the working tree. If the CLI changed files, it commits them on `jules/run-<run id>`, pushes that branch, and opens a pull request against the dispatched branch. If the CLI made no changes, the step exits without opening a PR. `.gemini/`, `gemini-artifacts/`, `gha-creds-*.json`, `__pycache__/`, `*.pyc`, and `node_modules/` are excluded so the action's own files and build artifacts are never committed.
+After the CLI finishes, the second step checks the working tree. If the CLI changed files, it commits them and pushes.
+
+- With **Branch to update** blank, it creates `jules/run-<run id>` and opens a new pull request.
+- With **Branch to update** set to a pull request's head branch, it checks that branch out, commits on it, and pushes. The pull request updates automatically; no new PR is opened.
+- If the CLI made no changes, the step exits without committing.
+
+`.gemini/`, `gemini-artifacts/`, `gha-creds-*.json`, `__pycache__/`, `*.pyc`, and `node_modules/` are excluded so the action's own files and build artifacts are never committed.
 
 The `gemini_model` input defaults to `gemini-3.5-flash-lite`. Gemini 2.5 Flash is deprecated and Google routes it to this model from December 1, 2026, so pinning the replacement avoids the deprecation path. The web UI's **Model** field overrides it per run; leave the field blank to use the default. You can also override it from the Actions tab's **Run workflow** form, or by sending `inputs.gemini_model` to the dispatch API.
 
 The `GEMINI_CLI_TRUST_WORKSPACE` environment variable is required: every `actions/checkout` workspace is untrusted, and Gemini CLI 0.68 refuses to start there. The env var applies to the whole job, including the action's internal step, so the action needs no extra input.
 
-The file must exist on the repository's default branch for `workflow_dispatch` to find it. Setup writes it to the default branch and Run dispatches with `ref` set to that same branch. If you install the file manually on another branch, dispatch returns `404`.
+The file must exist on the repository's default branch for `workflow_dispatch` to find it. Setup writes it to the default branch, and Run always dispatches with `ref` set to that same branch, so the workflow that executes is the current one on the default branch even when it updates an older pull request branch. The **Branch to update** input only selects what the job checks out and commits to. If you install the file manually on another branch, dispatch returns `404`.
 
 `run-gemini-cli` is pre-1.0, so its moving major tag is `v0` and there is no `v1`. `v0` currently resolves to `v0.1.22`; pin that exact tag if you want a fixed version. The template uses the action's `gemini_api_key`, `prompt`, and `gemini_model` inputs.
 
@@ -227,14 +254,16 @@ Each step is `created` or `updated`. On failure the response carries `error`, `s
 ### `POST /api/run`
 
 ```json
-{ "repo": "owner/name", "prompt": "...", "userToken": "github_pat_...", "model": "gemini-3.5-flash-lite" }
+{ "repo": "owner/name", "prompt": "...", "userToken": "github_pat_...", "model": "gemini-3.5-flash-lite", "branch": "jules/run-123" }
 ```
 
 `model` is optional. It must match `^[A-Za-z0-9._:-]+$` and be at most 100 characters. When it is blank or omitted, the request sends no `gemini_model` input, so the workflow's default applies.
 
-Returns `{ ok: true, repo, ref, model, workflowPath }` on the `204` from GitHub. `model` is the value sent, or the workflow default when the field is blank. Failures use the same shape as `/api/setup`.
+`branch` is optional. When set, it is forwarded as the `branch` dispatch input, and the workflow checks that branch out, commits on it, and pushes, which updates its pull request. It must be a branch name, not a full ref: `refs/...`, values over 255 characters, names containing `..`, names ending in `/`, and names starting with `-` are rejected, and so is the repository's default branch. When blank or omitted, the response's `branch` is `null`.
 
-The response returns as soon as the dispatch is accepted. The workflow then runs the CLI, commits any changes to `jules/run-<run id>`, and opens the pull request. The PR URL is printed in the Actions run log; the API does not wait for it.
+Returns `{ ok: true, repo, ref, model, branch, workflowPath }` on the `204` from GitHub. `model` is the value sent, or the workflow default when the field is blank. Failures use the same shape as `/api/setup`.
+
+The response returns as soon as the dispatch is accepted. The workflow then runs the CLI and, if it changed files, either commits to the supplied `branch` or creates `jules/run-<run id>` and opens a pull request. The commit log and the PR URL are printed in the Actions run log; the API does not wait for them.
 
 ## Tests
 
@@ -242,8 +271,8 @@ The response returns as soon as the dispatch is accepted. The workflow then runs
 npm test
 ```
 
-- `scripts/verify-crypto.mjs` seals a message, opens it with the recipient secret key, checks the base64 round trip, and asserts the workflow template kept its GitHub expressions.
-- `scripts/verify-api.mjs` mocks the GitHub API, runs `onRequestPost` for setup and run, decrypts the `encrypted_value` that setup sends, checks the workflow PUT carries `sha` only when the file exists, checks the model input is forwarded when set and omitted when blank, rejects a malformed model, and checks that a GitHub `403` body reaches the client unchanged.
+- `scripts/verify-crypto.mjs` seals a message, opens it with the recipient secret key, checks the base64 round trip, and asserts the workflow template kept its GitHub expressions, the `branch` input, the `ref` checkout, and both push paths.
+- `scripts/verify-api.mjs` mocks the GitHub API, runs `onRequestPost` for setup and run, decrypts the `encrypted_value` that setup sends, checks the workflow PUT carries `sha` only when the file exists, checks the model input is forwarded when set and omitted when blank, rejects a malformed model, checks that `branch` is forwarded and that bad branch names, `refs/...`, and the default branch are rejected, and checks that a GitHub `403` body reaches the client unchanged.
 
 ## Troubleshooting
 
@@ -255,6 +284,7 @@ npm test
 | `403` on setup, step `write the workflow file` | Contents or Workflows read/write is missing. |
 | `403` on run, step `dispatch the workflow` | Actions read/write is missing. |
 | `404` on run | The workflow file is not on the default branch, or the token cannot read Actions. |
+| Run fails at `Run actions/checkout@v4` with `couldn't find remote ref` | **Branch to update** points at a branch that does not exist or was deleted. Leave it blank or use an existing branch. |
 | `422` on setup | The workflow file changed on GitHub between the read and the write. Run Setup repo again. |
 | `Gemini CLI is not running in a trusted directory` in the run log | The installed workflow predates the `GEMINI_CLI_TRUST_WORKSPACE` job env. Run Setup repo again, or add that env var to the job by hand. |
 | `503 ... This model is currently experiencing high demand` after 10 retries | Google's side is out of capacity. The CLI already retried for about five minutes. Re-run the workflow; the template already uses `gemini-3.5-flash-lite` for this reason. |
@@ -287,6 +317,6 @@ Files and directories under `functions/` that start with an underscore are not r
 ## Notes
 
 - This is v1: there is no run status polling. The UI reports the dispatch result and links to the Actions tab.
-- The workflow commits to a new branch and opens a pull request; it never pushes to the branch it was dispatched on.
+- The workflow commits to a new branch and opens a pull request, or commits to the branch named in **Branch to update**; it never pushes to the branch it was dispatched on.
 - The GitHub token is scoped to whatever the user grants it. The app asks for the five permissions above and nothing else.
 - The frontend sends credentials over the same origin, so a deployed instance needs HTTPS, which Cloudflare Pages provides by default.
