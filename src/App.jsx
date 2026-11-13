@@ -118,14 +118,12 @@ export default function App() {
 
       <main className="shell">
         <section className="intro">
-          <h1>Dispatch Gemini CLI into a repository.</h1>
-          <p>
-            Pick a repository, write a prompt, and run it as a GitHub Actions task. The GitHub
-            token and Gemini key are used for the request only.
-          </p>
-          <a className="intro-link" href="#permissions">
-            Token permissions
-          </a>
+          <div className="intro-row">
+            <h1>Run Gemini CLI on your repository.</h1>
+            <a className="intro-link" href="#permissions">
+              Required token permissions
+            </a>
+          </div>
         </section>
 
         <div className="workspace">
@@ -167,19 +165,23 @@ export default function App() {
       </main>
 
       <footer className="shell footer">
-        <p>
-          Runs on Cloudflare Pages Functions. GitHub and Gemini are called with your credentials,
-          per request, and never persisted.
-        </p>
-        <p>
+        <div className="footer-brand">
+          <span className="footer-name">Jules Web</span>
+          <p>
+            Runs on Cloudflare Pages Functions. Credentials are used per request and never stored.
+          </p>
+        </div>
+        <nav className="footer-links" aria-label="Project and documentation">
+          <a href="https://github.com/OshekharO/Open-Jules" target="_blank" rel="noreferrer">
+            github.com/OshekharO/Open-Jules
+          </a>
           <a
             href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
             target="_blank"
             rel="noreferrer"
           >
-            GitHub token docs
+            Token docs
           </a>
-          <span aria-hidden="true">·</span>
           <a
             href="https://docs.github.com/en/rest/actions/secrets"
             target="_blank"
@@ -187,7 +189,7 @@ export default function App() {
           >
             Actions secrets API
           </a>
-        </p>
+        </nav>
       </footer>
     </div>
   );
