@@ -1,12 +1,12 @@
 # Jules Web
 
-A multi-user web UI for running Gemini CLI against a GitHub repository through GitHub Actions. Each user brings their own GitHub fine-grained token and Gemini API key. Neither credential is stored on the server.
+Jules Web runs Gemini CLI on a GitHub repository through GitHub Actions. Each user supplies a GitHub fine-grained token and a Gemini API key. The server stores neither credential.
 
-The flow is three steps:
+## What it does
 
 1. Enter a GitHub token and a Gemini API key.
 2. Pick a repository and run **Setup repo**. This writes the encrypted `GEMINI_API_KEY` repository secret and installs `.github/workflows/jules-web-agent.yml` on the repository's default branch.
-3. Enter a prompt, optionally set a model and an existing branch to update, and run **Run task**. This dispatches the workflow, which edits the repository and either opens a pull request or commits to the existing PR branch.
+3. Write a prompt, optionally choose a model and an existing branch, and run **Run task**. The workflow edits the checkout and either opens a pull request or commits to the existing branch.
 
 ## Stack
 
@@ -16,6 +16,8 @@ The flow is three steps:
 - No database, no KV, no server-side credential storage.
 
 ## How it works
+
+`/api/repos` lists the repositories the token can reach. `/api/setup` writes the Gemini key as an encrypted repository secret and installs the workflow file. `/api/run` dispatches the workflow.
 
 ```
 Browser (React state only)
@@ -30,7 +32,7 @@ Browser (React state only)
                     -> POST   /repos/{owner}/{repo}/actions/workflows/jules-web-agent.yml/dispatches
 ```
 
-`workflow_dispatch` answers `204 No Content` on success, not `200`. The function treats both as success and surfaces any GitHub error body verbatim.
+`workflow_dispatch` answers `204 No Content` on success, not `200`. The function treats both as success and returns GitHub's error body unchanged when the dispatch fails.
 
 ## Prerequisites
 
@@ -46,7 +48,7 @@ npm install
 npm run dev:pages
 ```
 
-This builds the frontend and serves the UI plus the Pages Functions on `http://127.0.0.1:8788`.
+This builds the frontend and serves the UI and Pages Functions together at `http://127.0.0.1:8788`.
 
 For frontend-only iteration, run the two halves separately:
 
@@ -64,7 +66,7 @@ npx wrangler pages project create jules-web --production-branch main
 npm run deploy
 ```
 
-`npm run deploy` builds `dist/` and uploads it with Wrangler, using the `jules-web` Pages project name from `package.json`. The project only needs to be created once. To deploy through the Cloudflare dashboard instead, connect the repository and set:
+`npm run deploy` builds `dist/` and uploads it with Wrangler, using the `jules-web` Pages project name from `package.json`. Create the project once. To deploy through the Cloudflare dashboard instead, connect the repository and set:
 
 - Build command: `npm run build`
 - Build output directory: `dist`
@@ -80,7 +82,7 @@ Add a Cloudflare API token as a repository secret first:
 1. In the Cloudflare dashboard, create an API token with the **Cloudflare Pages: Edit** permission for the account that owns the project.
 2. In GitHub, open Settings, Secrets and variables, Actions, and add `CLOUDFLARE_API_TOKEN`.
 
-The workflow creates the `jules-web` Pages project on its first run, then deploys to it. To create the project yourself instead, run `npx wrangler pages project create jules-web --production-branch main` once, or use the Cloudflare dashboard under Workers & Pages, Create, Pages, Upload assets. The project must exist before the first deploy, otherwise Wrangler exits with "The Pages project does not exist".
+The workflow creates the `jules-web` Pages project on its first run, then deploys to it. To create the project yourself, run `npx wrangler pages project create jules-web --production-branch main` once, or use the Cloudflare dashboard under Workers & Pages, Create, Pages, Upload assets. The project must exist before the first deploy; otherwise Wrangler exits with "The Pages project does not exist".
 
 Pushes to `main` deploy to the project's production branch. Pull requests create preview deployments named after the source branch. Fork pull requests do not receive repository secrets, so their deploy step fails by design.
 
@@ -98,11 +100,11 @@ Create the token under GitHub Settings, Developer settings, Personal access toke
 | Actions | Read and write | Writes the `GEMINI_API_KEY` secret and dispatches the workflow. |
 | Secrets | Read and write | Stores the encrypted Gemini key as a repository secret. |
 
-GitHub answers `403` when a permission is missing. The UI prints the failing step and GitHub's raw response body so the missing permission is visible without guessing.
+GitHub returns `403` when a permission is missing. The UI shows the failing step and GitHub's raw response body, so the missing permission is visible without guessing.
 
 ## Installed workflow
 
-The workflow installed at `.github/workflows/jules-web-agent.yml`:
+The installed workflow is `.github/workflows/jules-web-agent.yml`:
 
 ```yaml
 name: Jules Web Agent
@@ -192,19 +194,29 @@ jobs:
           gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title "$title" --body "This PR was created with [Jules Web](https://jules-web.pages.dev). Workflow run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 ```
 
-After the CLI finishes, the second step checks the working tree. If the CLI changed files, it commits them and pushes.
+### Commit and pull request behavior
+
+The second step runs after the CLI. It checks the working tree and commits any changes.
 
 - With **Branch to update** blank, it creates `jules/run-<run id>` and opens a new pull request.
 - With **Branch to update** set to a pull request's head branch, it checks that branch out, commits on it, and pushes. The pull request updates automatically; no new PR is opened.
 - If the CLI made no changes, the step exits without committing.
 
-`.gemini/`, `gemini-artifacts/`, `gha-creds-*.json`, `__pycache__/`, `*.pyc`, and `node_modules/` are excluded so the action's own files and build artifacts are never committed.
+The commit step excludes `.gemini/`, `gemini-artifacts/`, `gha-creds-*.json`, `__pycache__/`, `*.pyc`, and `node_modules/` so the action's own files and build artifacts are never committed.
+
+### Model
 
 The `gemini_model` input defaults to `gemini-3.5-flash-lite`. Gemini 2.5 Flash is deprecated and Google routes it to this model from December 1, 2026, so pinning the replacement avoids the deprecation path. The web UI's **Model** field overrides it per run; leave the field blank to use the default. You can also override it from the Actions tab's **Run workflow** form, or by sending `inputs.gemini_model` to the dispatch API.
 
-The `GEMINI_CLI_TRUST_WORKSPACE` environment variable is required: every `actions/checkout` workspace is untrusted, and Gemini CLI 0.68 refuses to start there. The env var applies to the whole job, including the action's internal step, so the action needs no extra input.
+### Workspace trust
 
-The file must exist on the repository's default branch for `workflow_dispatch` to find it. Setup writes it to the default branch, and Run always dispatches with `ref` set to that same branch, so the workflow that executes is the current one on the default branch even when it updates an older pull request branch. The **Branch to update** input only selects what the job checks out and commits to. If you install the file manually on another branch, dispatch returns `404`.
+The `GEMINI_CLI_TRUST_WORKSPACE` environment variable is required. Every `actions/checkout` workspace is untrusted, and Gemini CLI 0.68 refuses to start there. The env var applies to the whole job, including the action's internal step, so the action needs no extra input.
+
+### Dispatch ref
+
+The workflow file must exist on the repository's default branch for `workflow_dispatch` to find it. Setup writes it there, and Run always dispatches with `ref` set to that same branch, so the workflow that executes is the current one on the default branch even when it updates an older pull request branch. **Branch to update** only selects what the job checks out and commits to. If you install the file manually on another branch, dispatch returns `404`.
+
+### Action version
 
 `run-gemini-cli` is pre-1.0, so its moving major tag is `v0` and there is no `v1`. `v0` currently resolves to `v0.1.22`; pin that exact tag if you want a fixed version. The template uses the action's `gemini_api_key`, `prompt`, and `gemini_model` inputs.
 
@@ -227,7 +239,7 @@ All routes are `POST` with a JSON body. The GitHub token is only accepted in the
 { "userToken": "github_pat_..." }
 ```
 
-Returns `{ ok: true, repos: [{ id, name, fullName, owner, private, defaultBranch, htmlUrl, archived }] }`. The function pages through up to five pages of 100 repositories, so at most 500 are returned.
+Returns `{ ok: true, repos: [{ id, name, fullName, owner, private, defaultBranch, htmlUrl, archived }] }`. The function reads up to five pages of 100 repositories, so at most 500 are returned.
 
 `GET /api/repos` with an `x-github-token` header returns the same payload. The UI uses POST so the token never appears in a URL. Other methods return `405`.
 
@@ -261,7 +273,7 @@ Each step is `created` or `updated`. On failure the response carries `error`, `s
 
 `branch` is optional. When set, it is forwarded as the `branch` dispatch input, and the workflow checks that branch out, commits on it, and pushes, which updates its pull request. It must be a branch name, not a full ref: `refs/...`, values over 255 characters, names containing `..`, names ending in `/`, and names starting with `-` are rejected, and so is the repository's default branch. When blank or omitted, the response's `branch` is `null`.
 
-Returns `{ ok: true, repo, ref, model, branch, workflowPath }` on the `204` from GitHub. `model` is the value sent, or the workflow default when the field is blank. Failures use the same shape as `/api/setup`.
+The response returns `{ ok: true, repo, ref, model, branch, workflowPath }` after GitHub answers `204`. `model` is the value sent, or the workflow default when the field is blank. Failures use the same shape as `/api/setup`.
 
 The response returns as soon as the dispatch is accepted. The workflow then runs the CLI and, if it changed files, either commits to the supplied `branch` or creates `jules/run-<run id>` and opens a pull request. The commit log and the PR URL are printed in the Actions run log; the API does not wait for them.
 
@@ -314,7 +326,7 @@ wrangler.toml         Pages project config
 
 Files and directories under `functions/` that start with an underscore are not routed by Pages. `GET /api/_crypto` falls back to the SPA, which is the expected behavior.
 
-## Notes
+## Limits
 
 - This is v1: there is no run status polling. The UI reports the dispatch result and links to the Actions tab.
 - The workflow commits to a new branch and opens a pull request, or commits to the branch named in **Branch to update**; it never pushes to the branch it was dispatched on.
