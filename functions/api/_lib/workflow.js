@@ -1,6 +1,6 @@
 export const WORKFLOW_PATH = '.github/workflows/jules-web-agent.yml';
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 
 // Escaped \${ keeps GitHub expression syntax literal inside a JS template string.
 export const WORKFLOW_YAML = `name: Jules Web Agent

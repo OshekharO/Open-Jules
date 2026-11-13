@@ -46,13 +46,13 @@ export default function PromptCard({
           className="input"
           type="text"
           value={model}
-          placeholder="gemini-2.5-flash"
+          placeholder="gemini-3.5-flash-lite"
           onChange={(event) => onModelChange(event.target.value)}
           spellCheck="false"
           autoComplete="off"
         />
         <p className="hint">
-          Optional. Blank uses the workflow default, <code>gemini-2.5-flash</code>.
+          Optional. Blank uses the workflow default, <code>gemini-3.5-flash-lite</code>.
         </p>
       </div>
 

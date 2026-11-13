@@ -116,7 +116,7 @@ on:
       gemini_model:
         description: 'Gemini model to run'
         required: false
-        default: 'gemini-2.5-flash'
+        default: 'gemini-3.5-flash-lite'
         type: string
 jobs:
   run-gemini:
@@ -138,7 +138,7 @@ jobs:
           gemini_model: ${{ inputs.gemini_model }}
 ```
 
-The `gemini_model` input defaults to `gemini-2.5-flash` because the CLI's default model is frequently capacity-limited on the free Gemini API key tier. The web UI's **Model** field overrides it per run; leave the field blank to use the default. You can also override it from the Actions tab's **Run workflow** form, or by sending `inputs.gemini_model` to the dispatch API.
+The `gemini_model` input defaults to `gemini-3.5-flash-lite`. Gemini 2.5 Flash is deprecated and Google routes it to this model from December 1, 2026, so pinning the replacement avoids the deprecation path. The web UI's **Model** field overrides it per run; leave the field blank to use the default. You can also override it from the Actions tab's **Run workflow** form, or by sending `inputs.gemini_model` to the dispatch API.
 
 The `GEMINI_CLI_TRUST_WORKSPACE` environment variable is required: every `actions/checkout` workspace is untrusted, and Gemini CLI 0.68 refuses to start there. The env var applies to the whole job, including the action's internal step, so the action needs no extra input.
 
@@ -192,7 +192,7 @@ Each step is `created` or `updated`. On failure the response carries `error`, `s
 ### `POST /api/run`
 
 ```json
-{ "repo": "owner/name", "prompt": "...", "userToken": "github_pat_...", "model": "gemini-2.5-flash" }
+{ "repo": "owner/name", "prompt": "...", "userToken": "github_pat_...", "model": "gemini-3.5-flash-lite" }
 ```
 
 `model` is optional. It must match `^[A-Za-z0-9._:-]+$` and be at most 100 characters. When it is blank or omitted, the request sends no `gemini_model` input, so the workflow's default applies.
@@ -220,7 +220,7 @@ npm test
 | `404` on run | The workflow file is not on the default branch, or the token cannot read Actions. |
 | `422` on setup | The workflow file changed on GitHub between the read and the write. Run Setup repo again. |
 | `Gemini CLI is not running in a trusted directory` in the run log | The installed workflow predates the `GEMINI_CLI_TRUST_WORKSPACE` job env. Run Setup repo again, or add that env var to the job by hand. |
-| `503 ... This model is currently experiencing high demand` after 10 retries | Google's side is out of capacity. The CLI already retried for about five minutes. Re-run the workflow; the template already uses `gemini-2.5-flash` for this reason. |
+| `503 ... This model is currently experiencing high demand` after 10 retries | Google's side is out of capacity. The CLI already retried for about five minutes. Re-run the workflow; the template already uses `gemini-3.5-flash-lite` for this reason. |
 
 ## Project layout
 

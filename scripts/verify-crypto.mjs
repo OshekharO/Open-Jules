@@ -54,8 +54,8 @@ assert.ok(
   'workflow template must trust the Actions workspace for Gemini CLI',
 );
 assert.ok(
-  WORKFLOW_YAML.includes("default: 'gemini-2.5-flash'"),
-  'workflow template must default the model input to gemini-2.5-flash',
+  WORKFLOW_YAML.includes("default: 'gemini-3.5-flash-lite'"),
+  'workflow template must default the model input to gemini-3.5-flash-lite',
 );
 assert.ok(
   WORKFLOW_YAML.includes('gemini_model: ${{ inputs.gemini_model }}'),

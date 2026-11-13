@@ -197,16 +197,16 @@ function openSealed(sealed) {
   const result = await post(run, {
     repo: 'acme/widgets',
     prompt: 'hello',
-    model: 'gemini-2.5-pro',
+    model: 'gemini-3.8-flash',
     userToken: TOKEN,
   });
 
   assert.equal(result.status, 200);
-  assert.equal(result.data.model, 'gemini-2.5-pro');
+  assert.equal(result.data.model, 'gemini-3.8-flash');
 
   const dispatch = calls.find((call) => call.method === 'POST' && call.href.endsWith('/dispatches'));
   const payload = JSON.parse(dispatch.body);
-  assert.equal(payload.inputs.gemini_model, 'gemini-2.5-pro');
+  assert.equal(payload.inputs.gemini_model, 'gemini-3.8-flash');
 
   console.log('run with model OK');
 }
