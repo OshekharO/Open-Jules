@@ -6,7 +6,7 @@ The flow is three steps:
 
 1. Enter a GitHub token and a Gemini API key.
 2. Pick a repository and run **Setup repo**. This writes the encrypted `GEMINI_API_KEY` repository secret and installs `.github/workflows/jules-web-agent.yml` on the repository's default branch.
-3. Enter a prompt, optionally set a model, and run **Run task**. This dispatches the workflow with the prompt and model as inputs.
+3. Enter a prompt, optionally set a model, and run **Run task**. This dispatches the workflow, which edits the repository and opens a pull request with the changes.
 
 ## Stack
 
@@ -134,9 +134,52 @@ jobs:
       - uses: google-github-actions/run-gemini-cli@v0
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          prompt: ${{ inputs.user_prompt }}
+          prompt: |
+            You are running in a GitHub Actions checkout of this repository.
+            Make the requested changes directly in the working tree. Do not commit or push; a later step commits and opens a pull request.
+
+            Request: ${{ inputs.user_prompt }}
           gemini_model: ${{ inputs.gemini_model }}
+      - name: Commit changes and open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          USER_PROMPT: ${{ inputs.user_prompt }}
+        run: |
+          set -euo pipefail
+
+          # The action writes these into the workspace; never commit them.
+          printf '%s\n' '.gemini/' 'gemini-artifacts/' 'gha-creds-*.json' >> .git/info/exclude
+
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo 'Gemini CLI made no file changes; skipping pull request.'
+            exit 0
+          fi
+
+          git config user.name 'jules-web[bot]'
+          git config user.email 'jules-web[bot]@users.noreply.github.com'
+
+          branch="jules/run-$GITHUB_RUN_ID"
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "Apply Gemini CLI changes from run $GITHUB_RUN_ID [skip ci]"
+          git push --set-upstream origin "$branch"
+
+          body_file="$(mktemp)"
+          {
+            echo "Automated changes from the Jules Web Agent workflow (run $GITHUB_RUN_ID)."
+            echo
+            echo '### Prompt'
+            echo
+            echo '```'
+            printf '%s\n' "$USER_PROMPT"
+            echo '```'
+          } > "$body_file"
+
+          title="Gemini CLI: $(printf '%s' "$USER_PROMPT" | head -n 1 | cut -c 1-72)"
+          gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title "$title" --body-file "$body_file"
 ```
+
+After the CLI finishes, the second step checks the working tree. If the CLI changed files, it commits them on `jules/run-<run id>`, pushes that branch, and opens a pull request against the dispatched branch. If the CLI made no changes, the step exits without opening a PR. `.gemini/`, `gemini-artifacts/`, and `gha-creds-*.json` are excluded so the action's own files are never committed.
 
 The `gemini_model` input defaults to `gemini-3.5-flash-lite`. Gemini 2.5 Flash is deprecated and Google routes it to this model from December 1, 2026, so pinning the replacement avoids the deprecation path. The web UI's **Model** field overrides it per run; leave the field blank to use the default. You can also override it from the Actions tab's **Run workflow** form, or by sending `inputs.gemini_model` to the dispatch API.
 
@@ -199,6 +242,8 @@ Each step is `created` or `updated`. On failure the response carries `error`, `s
 
 Returns `{ ok: true, repo, ref, model, workflowPath }` on the `204` from GitHub. `model` is the value sent, or the workflow default when the field is blank. Failures use the same shape as `/api/setup`.
 
+The response returns as soon as the dispatch is accepted. The workflow then runs the CLI, commits any changes to `jules/run-<run id>`, and opens the pull request. The PR URL is printed in the Actions run log; the API does not wait for it.
+
 ## Tests
 
 ```bash
@@ -250,5 +295,6 @@ Files and directories under `functions/` that start with an underscore are not r
 ## Notes
 
 - This is v1: there is no run status polling. The UI reports the dispatch result and links to the Actions tab.
+- The workflow commits to a new branch and opens a pull request; it never pushes to the branch it was dispatched on.
 - The GitHub token is scoped to whatever the user grants it. The app asks for the five permissions above and nothing else.
 - The frontend sends credentials over the same origin, so a deployed instance needs HTTPS, which Cloudflare Pages provides by default.

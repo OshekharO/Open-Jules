@@ -108,7 +108,8 @@ export default function PromptCard({
           }. GitHub returned 204.`}
         >
           <p className="banner-detail">
-            The run is queued now.{' '}
+            The run is queued now. If the agent changes files, it commits them to a new branch and
+            opens a pull request.{' '}
             {actionsUrl ? (
               <a href={actionsUrl} target="_blank" rel="noreferrer">
                 Open the Actions tab

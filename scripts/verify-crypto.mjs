@@ -34,7 +34,7 @@ assert.ok(
   'workflow template lost the secrets expression',
 );
 assert.ok(
-  WORKFLOW_YAML.includes('prompt: ${{ inputs.user_prompt }}'),
+  WORKFLOW_YAML.includes('Request: ${{ inputs.user_prompt }}'),
   'workflow template lost the input expression',
 );
 assert.ok(
@@ -60,6 +60,14 @@ assert.ok(
 assert.ok(
   WORKFLOW_YAML.includes('gemini_model: ${{ inputs.gemini_model }}'),
   'workflow template must pass the model input to the action',
+);
+assert.ok(
+  WORKFLOW_YAML.includes('git push --set-upstream origin "$branch"'),
+  'workflow template must push the agent branch',
+);
+assert.ok(
+  WORKFLOW_YAML.includes('gh pr create'),
+  'workflow template must open a pull request',
 );
 
 console.log('crypto round-trip OK');
