@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "A multi-user GUI that dispatches Gemini CLI into GitHub repositories through GitHub Actions.",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "vite",
     "dev:pages": "npm run build && wrangler pages dev dist --port 8788",

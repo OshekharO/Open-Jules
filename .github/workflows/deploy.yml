@@ -24,7 +24,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Wrangler 4 requires Node.js 22.12 or newer.
+          node-version: 22
 
       - name: Install dependencies
         run: npm ci

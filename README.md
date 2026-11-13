@@ -34,7 +34,7 @@ Browser (React state only)
 
 ## Prerequisites
 
-- Node.js 20 or newer.
+- Node.js 22.12 or newer. Wrangler 4 refuses to run on Node 20.
 - A Cloudflare account and `npx wrangler login`.
 - A GitHub fine-grained personal access token.
 - A Gemini API key.
