@@ -255,6 +255,42 @@ code {
   color: var(--text-muted);
 }
 
+.hint-error {
+  color: var(--danger);
+}
+
+/* Credentials */
+
+.remember {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.remember-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.remember-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.remember-label input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .input,
 .select,
 .textarea {
@@ -385,6 +421,12 @@ code {
 .button-block {
   width: 100%;
   margin-top: 16px;
+}
+
+.button-small {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
 }
 
 /* Repository card */

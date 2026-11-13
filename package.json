@@ -12,9 +12,10 @@
     "dev:pages": "npm run build && wrangler pages dev dist --port 8788",
     "build": "vite build",
     "deploy": "npm run build && wrangler pages deploy dist --project-name jules-web",
-    "test": "npm run test:crypto && npm run test:api",
+    "test": "npm run test:crypto && npm run test:api && npm run test:credentials",
     "test:crypto": "node scripts/verify-crypto.mjs",
-    "test:api": "node scripts/verify-api.mjs"
+    "test:api": "node scripts/verify-api.mjs",
+    "test:credentials": "node scripts/verify-credentials.mjs"
   },
   "dependencies": {
     "blakejs": "^1.2.1",

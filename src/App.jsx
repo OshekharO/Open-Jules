@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { errorDetails, postJson } from './api.js';
+import { clearCredentials, loadCredentials, saveCredentials } from './credentials.js';
 import useRunStatus from './useRunStatus.js';
 import CredentialsCard from './components/CredentialsCard.jsx';
 import PermissionsGuide from './components/PermissionsGuide.jsx';
@@ -9,8 +10,12 @@ import RepositoryCard from './components/RepositoryCard.jsx';
 const IDLE = { status: 'idle', error: null };
 
 export default function App() {
-  const [token, setToken] = useState('');
-  const [geminiKey, setGeminiKey] = useState('');
+  const [stored] = useState(loadCredentials);
+  const [token, setToken] = useState(stored ? stored.token : '');
+  const [geminiKey, setGeminiKey] = useState(stored ? stored.geminiKey : '');
+  const [remember, setRemember] = useState(Boolean(stored));
+  const [storageError, setStorageError] = useState('');
+
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState('');
   const [branch, setBranch] = useState('');
@@ -27,6 +32,27 @@ export default function App() {
   const credentialsReady = token.trim().length > 0 && geminiKey.trim().length > 0;
   const canRun =
     token.trim().length > 0 && Boolean(repo) && prompt.trim().length > 0 && run.status !== 'running';
+
+  useEffect(() => {
+    if (!remember || (!token && !geminiKey)) {
+      clearCredentials();
+      setStorageError('');
+      return;
+    }
+    setStorageError(
+      saveCredentials({ token, geminiKey })
+        ? ''
+        : 'This browser blocked local storage, so the values were not saved.',
+    );
+  }, [token, geminiKey, remember]);
+
+  function handleForget() {
+    clearCredentials();
+    setRemember(false);
+    setStorageError('');
+    setToken('');
+    setGeminiKey('');
+  }
 
   async function handleLoadRepos() {
     setRepoState({ status: 'loading', error: null });
@@ -120,7 +146,7 @@ export default function App() {
                 strokeLinecap="round"
               />
             </svg>
-            Credentials are never stored
+            Credentials stay in your browser
           </p>
         </div>
       </header>
@@ -142,6 +168,10 @@ export default function App() {
               geminiKey={geminiKey}
               onTokenChange={setToken}
               onGeminiKeyChange={setGeminiKey}
+              remember={remember}
+              onRememberChange={setRemember}
+              onForget={handleForget}
+              storageError={storageError}
             />
             <RepositoryCard
               token={token}
@@ -180,7 +210,7 @@ export default function App() {
             <p className="footer-brand">
               <span className="footer-name">Jules Web</span>
               <span className="footer-tag">
-                Run Gemini CLI on your repository. Credentials are used per request and never stored.
+                Run Gemini CLI on your repository. Credentials are used per request and never logged.
               </span>
             </p>
             <a

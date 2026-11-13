@@ -4,7 +4,7 @@ Jules Web runs Gemini CLI on a GitHub repository through GitHub Actions. Each us
 
 ## What it does
 
-1. Enter a GitHub token and a Gemini API key.
+1. Enter a GitHub token and a Gemini API key. Tick **Remember on this device** if you want both values to survive a refresh or a browser restart.
 2. Pick a repository and run **Setup repo**. This writes the encrypted `GEMINI_API_KEY` repository secret and installs `.github/workflows/jules-web-agent.yml` on the repository's default branch.
 3. Write a prompt, optionally choose a model and an existing branch, and run **Run task**. The workflow edits the checkout and either opens a pull request or commits to the existing branch. The app polls the run until it finishes and links to its log.
 
@@ -13,14 +13,14 @@ Jules Web runs Gemini CLI on a GitHub repository through GitHub Actions. Each us
 - Cloudflare Pages with Pages Functions (`functions/api/`), deployed as a static frontend plus a Worker.
 - React 19 and Vite for the frontend.
 - `tweetnacl` and `blakejs` for LibSodium `crypto_box_seal` in the Workers runtime.
-- No database, no KV, no server-side credential storage.
+- No database, no KV, no server-side credential storage. Remembered credentials live only in the browser's `localStorage`.
 
 ## How it works
 
 `/api/repos` lists the repositories the token can reach. `/api/setup` writes the Gemini key as an encrypted repository secret and installs the workflow file. `/api/run` dispatches the workflow, and `/api/run-status` reports the run that dispatch started.
 
 ```
-Browser (React state only)
+Browser (React state, plus localStorage when remembered)
   POST /api/repos   -> GET    /user/repos
   POST /api/setup   -> GET    /repos/{owner}/{repo}
                     -> GET    /repos/{owner}/{repo}/actions/secrets/public-key
@@ -225,7 +225,9 @@ The workflow file must exist on the repository's default branch for `workflow_di
 
 ## Security model
 
-- Credentials live in React state and are sent as JSON request bodies to this app's own `/api/*` routes. They are never written to `localStorage`, `sessionStorage`, URLs, logs, KV, or D1.
+- Credentials live in React state and are sent as JSON request bodies to this app's own `/api/*` routes. They are never written to URLs, logs, KV, or D1.
+- **Remember on this device** is off by default. When it is on, the app writes both values to `localStorage` under `jules-web.credentials.v1` as plain JSON so they survive a refresh or a browser restart; **Forget** removes that entry and clears the fields. Nothing is written unless the box is ticked.
+- That stored copy is plain text, so any script running on the origin can read it. The bundle ships no third-party scripts, but the option should stay off on shared machines.
 - The functions keep the token and key in request-scoped variables and discard them when the response is returned. Responses never echo either credential.
 - The Gemini key is not sent to GitHub as plaintext. The function fetches the repository's Actions public key, seals the value with LibSodium `crypto_box_seal` (X25519 plus XSalsa20-Poly1305 with a BLAKE2b derived nonce), base64 encodes it, and sends `{ encrypted_value, key_id }`.
 - The app operator still terminates TLS and can observe request bodies, which is true of any proxy that forwards user credentials. Do not add request logging to these functions.
@@ -298,6 +300,7 @@ npm test
 
 - `scripts/verify-crypto.mjs` seals a message, opens it with the recipient secret key, checks the base64 round trip, and asserts the workflow template kept its GitHub expressions, the `branch` input, the `ref` checkout, and both push paths.
 - `scripts/verify-api.mjs` mocks the GitHub API, runs `onRequestPost` for setup, run, and run status, decrypts the `encrypted_value` that setup sends, checks the workflow PUT carries `sha` only when the file exists, checks the model input is forwarded when set and omitted when blank, rejects a malformed model, checks that `branch` is forwarded and that bad branch names, `refs/...`, and the default branch are rejected, checks that a GitHub `403` body reaches the client unchanged, and checks that run status finds the newest dispatch after `since`, ignores older runs, filters by branch, reads a run by id, rejects malformed payloads, and passes a `403` through.
+- `scripts/verify-credentials.mjs` checks the remembered-credentials round trip, that a blocked write is reported instead of thrown, that **Forget** removes the entry, that corrupt payloads are ignored, and that an unavailable storage area never throws.
 
 ## Troubleshooting
 
@@ -332,10 +335,11 @@ public/
 src/
   App.jsx             Form state and request handling
   api.js              fetch wrapper and error details
+  credentials.js      Optional localStorage persistence for both credentials
   useRunStatus.js     Polls /api/run-status until the run finishes
   components/         Credentials, Repository, Prompt, Permissions, Status
   styles.css
-scripts/              Crypto and API verification
+scripts/              Crypto, API, and credential verification
 wrangler.toml         Pages project config
 ```
 
@@ -344,6 +348,7 @@ Files and directories under `functions/` that start with an underscore are not r
 ## Limits
 
 - This is v1: run status polling covers the run itself, not the live log. The UI polls every ten seconds until the run completes, then links to the run log for the step output.
+- **Remember on this device** writes both credentials to `localStorage` in plain text. Leave it off on shared machines; it is off by default.
 - The workflow commits to a new branch and opens a pull request, or commits to the branch named in **Branch to update**; it never pushes to the branch it was dispatched on.
 - The GitHub token is scoped to whatever the user grants it. The app asks for the five permissions above and nothing else.
 - The frontend sends credentials over the same origin, so a deployed instance needs HTTPS, which Cloudflare Pages provides by default.
