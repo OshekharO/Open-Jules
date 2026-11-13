@@ -1,0 +1,217 @@
+import assert from 'node:assert/strict';
+import nacl from 'tweetnacl';
+import { blake2b } from 'blakejs';
+
+import { onRequestPost as setup } from '../functions/api/setup.js';
+import { onRequestPost as run } from '../functions/api/run.js';
+import { onRequestPost as listRepos } from '../functions/api/repos.js';
+import { base64ToBytes, bytesToBase64 } from '../functions/api/_lib/http.js';
+import { WORKFLOW_PATH, WORKFLOW_YAML } from '../functions/api/_lib/workflow.js';
+
+const TOKEN = 'github_pat_test_token';
+const GEMINI_KEY = 'AIza-test-gemini-key';
+const recipient = nacl.box.keyPair();
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function installGithubMock({ fileExists = true } = {}) {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    const method = init.method ?? 'GET';
+    calls.push({ href, method, body: init.body, headers: init.headers });
+
+    if (href.endsWith('/repos/acme/widgets')) {
+      return jsonResponse({ default_branch: 'main' });
+    }
+    if (href.endsWith('/actions/secrets/public-key')) {
+      return jsonResponse({ key_id: 'kid-1', key: bytesToBase64(recipient.publicKey) });
+    }
+    if (href.endsWith('/actions/secrets/GEMINI_API_KEY')) {
+      return new Response(null, { status: 204 });
+    }
+    if (href.endsWith('/dispatches')) {
+      return new Response(null, { status: 204 });
+    }
+    if (href.includes('/contents/' + WORKFLOW_PATH)) {
+      if (method === 'GET') {
+        return fileExists
+          ? jsonResponse({ sha: 'abc123' })
+          : jsonResponse({ message: 'Not Found' }, 404);
+      }
+      return jsonResponse({ content: { sha: 'newsha' } }, 201);
+    }
+    return jsonResponse({ message: `unexpected call: ${method} ${href}` }, 500);
+  };
+  return calls;
+}
+
+async function post(handler, payload) {
+  const request = new Request('http://localhost/api/x', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const response = await handler({ request });
+  return { status: response.status, data: await response.json() };
+}
+
+function openSealed(sealed) {
+  const ephemeralPublicKey = sealed.subarray(0, nacl.box.publicKeyLength);
+  const encrypted = sealed.subarray(nacl.box.publicKeyLength);
+  const input = new Uint8Array(ephemeralPublicKey.length + recipient.publicKey.length);
+  input.set(ephemeralPublicKey, 0);
+  input.set(recipient.publicKey, ephemeralPublicKey.length);
+  const nonce = blake2b(input, undefined, nacl.box.nonceLength);
+  const opened = nacl.box.open(encrypted, nonce, ephemeralPublicKey, recipient.secretKey);
+  assert.ok(opened, 'secret value did not decrypt');
+  return new TextDecoder().decode(opened);
+}
+
+// Repo listing: GitHub payload is mapped for the selector.
+{
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    calls.push(href);
+    return jsonResponse([
+      {
+        id: 42,
+        name: 'widgets',
+        full_name: 'acme/widgets',
+        owner: { login: 'acme' },
+        private: true,
+        default_branch: 'main',
+        html_url: 'https://github.com/acme/widgets',
+        archived: false,
+      },
+    ]);
+  };
+
+  const result = await post(listRepos, { userToken: TOKEN });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.repos.length, 1);
+  assert.deepEqual(result.data.repos[0], {
+    id: 42,
+    name: 'widgets',
+    fullName: 'acme/widgets',
+    owner: 'acme',
+    private: true,
+    defaultBranch: 'main',
+    htmlUrl: 'https://github.com/acme/widgets',
+    archived: false,
+  });
+  assert.ok(calls[0].includes('/user/repos?'), 'repo listing must call /user/repos');
+  assert.ok(calls[0].includes('per_page=100'), 'repo listing must request 100 per page');
+
+  console.log('repo listing OK');
+}
+
+// Setup: existing workflow file, so the PUT must carry the sha.
+{
+  const calls = installGithubMock({ fileExists: true });
+  const result = await post(setup, {
+    repo: 'acme/widgets',
+    userToken: TOKEN,
+    geminiKey: GEMINI_KEY,
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.data.ok, true);
+  assert.equal(result.data.defaultBranch, 'main');
+  assert.deepEqual(result.data.steps, { secret: 'updated', workflow: 'updated' });
+
+  const secretCall = calls.find((call) => call.href.endsWith('/actions/secrets/GEMINI_API_KEY'));
+  assert.equal(secretCall.method, 'PUT');
+  const secretPayload = JSON.parse(secretCall.body);
+  assert.equal(secretPayload.key_id, 'kid-1');
+  assert.equal(openSealed(base64ToBytes(secretPayload.encrypted_value)), GEMINI_KEY);
+
+  const putCall = calls.find((call) => call.method === 'PUT' && call.href.includes('/contents/'));
+  const putPayload = JSON.parse(putCall.body);
+  assert.equal(putPayload.branch, 'main');
+  assert.equal(putPayload.sha, 'abc123');
+  assert.equal(new TextDecoder().decode(base64ToBytes(putPayload.content)), WORKFLOW_YAML);
+
+  const serialized = JSON.stringify(result.data);
+  assert.ok(!serialized.includes(TOKEN), 'response leaked the GitHub token');
+  assert.ok(!serialized.includes(GEMINI_KEY), 'response leaked the Gemini key');
+
+  for (const call of calls) {
+    const headers = new Headers(call.headers);
+    assert.equal(headers.get('user-agent'), 'jules-web', 'GitHub request is missing a User-Agent');
+    assert.equal(headers.get('authorization'), `Bearer ${TOKEN}`);
+  }
+
+  console.log('setup with existing file OK');
+}
+
+// Setup: no workflow file yet, so the PUT must omit the sha.
+{
+  const calls = installGithubMock({ fileExists: false });
+  const result = await post(setup, {
+    repo: 'acme/widgets',
+    userToken: TOKEN,
+    geminiKey: GEMINI_KEY,
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.data.steps, { secret: 'updated', workflow: 'created' });
+  const putCall = calls.find((call) => call.method === 'PUT' && call.href.includes('/contents/'));
+  assert.equal('sha' in JSON.parse(putCall.body), false, 'new file must not send a sha');
+
+  console.log('setup with new file OK');
+}
+
+// Run: workflow_dispatch answers 204.
+{
+  const calls = installGithubMock({ fileExists: true });
+  const result = await post(run, {
+    repo: 'acme/widgets',
+    prompt: 'Add a setup section to the README',
+    userToken: TOKEN,
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.data.ok, true);
+  assert.equal(result.data.ref, 'main');
+
+  const dispatch = calls.find((call) => call.method === 'POST' && call.href.endsWith('/dispatches'));
+  const payload = JSON.parse(dispatch.body);
+  assert.equal(payload.ref, 'main');
+  assert.equal(payload.inputs.user_prompt, 'Add a setup section to the README');
+
+  console.log('run dispatch OK');
+}
+
+// Run: a GitHub 403 body must reach the client unchanged.
+{
+  globalThis.fetch = async () =>
+    jsonResponse(
+      {
+        message:
+          'Refusing to allow a Personal Access Token to create or update workflow without `workflow` scope',
+      },
+      403,
+    );
+
+  const result = await post(run, {
+    repo: 'acme/widgets',
+    prompt: 'hello',
+    userToken: TOKEN,
+  });
+
+  assert.equal(result.status, 502);
+  assert.equal(result.data.ok, false);
+  assert.equal(result.data.githubStatus, 403);
+  assert.match(result.data.githubBody, /workflow` scope/);
+
+  console.log('run 403 passthrough OK');
+}
+
+console.log('api verification complete');

@@ -1,0 +1,92 @@
+import StatusBanner, { ErrorDetail } from './StatusBanner.jsx';
+
+const WORKFLOW_FILE = 'jules-web-agent.yml';
+
+export default function PromptCard({ prompt, onPromptChange, repo, onRun, run, canRun }) {
+  const actionsUrl = repo ? `https://github.com/${repo.fullName}/actions` : null;
+
+  return (
+    <section className="card card-stage" aria-labelledby="prompt-title">
+      <header className="card-head">
+        <span className="step" aria-hidden="true">
+          3
+        </span>
+        <h2 id="prompt-title">Prompt</h2>
+      </header>
+
+      <div className="field">
+        <label className="label" htmlFor="prompt-input">
+          What should Gemini CLI do?
+        </label>
+        <textarea
+          id="prompt-input"
+          className="textarea"
+          value={prompt}
+          placeholder="Example: Add a README section that documents the local setup steps, then open a pull request."
+          onChange={(event) => onPromptChange(event.target.value)}
+          rows={9}
+        />
+      </div>
+
+      <dl className="target" aria-label="Dispatch target">
+        <div className="target-row">
+          <dt>Repository</dt>
+          <dd>{repo ? repo.fullName : 'Not selected'}</dd>
+        </div>
+        <div className="target-row">
+          <dt>Ref</dt>
+          <dd>{repo ? repo.defaultBranch : 'Not selected'}</dd>
+        </div>
+        <div className="target-row">
+          <dt>Workflow</dt>
+          <dd>{WORKFLOW_FILE}</dd>
+        </div>
+      </dl>
+
+      <div className="run-row">
+        <p className="hint">
+          Dispatches the workflow with your prompt as the <code>user_prompt</code> input. The
+          workflow must exist on the ref shown above.
+        </p>
+        <button
+          type="button"
+          className="button button-primary"
+          onClick={onRun}
+          disabled={!canRun}
+          aria-busy={run.status === 'running'}
+        >
+          {run.status === 'running' ? (
+            <>
+              <span className="spinner" aria-hidden="true" />
+              Running
+            </>
+          ) : (
+            'Run task'
+          )}
+        </button>
+      </div>
+
+      {run.status === 'error' ? (
+        <StatusBanner kind="error" title={run.error.message}>
+          <ErrorDetail error={run.error} />
+        </StatusBanner>
+      ) : null}
+
+      {run.status === 'success' && run.result ? (
+        <StatusBanner
+          kind="success"
+          title={`Dispatched to ${run.result.repo} on ${run.result.ref}. GitHub returned 204.`}
+        >
+          <p className="banner-detail">
+            The run is queued now.{' '}
+            {actionsUrl ? (
+              <a href={actionsUrl} target="_blank" rel="noreferrer">
+                Open the Actions tab
+              </a>
+            ) : null}
+          </p>
+        </StatusBanner>
+      ) : null}
+    </section>
+  );
+}

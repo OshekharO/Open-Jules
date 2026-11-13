@@ -1,0 +1,27 @@
+{
+  "name": "jules-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A multi-user GUI that dispatches Gemini CLI into GitHub repositories through GitHub Actions.",
+  "scripts": {
+    "dev": "vite",
+    "dev:pages": "npm run build && wrangler pages dev dist --port 8788",
+    "build": "vite build",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name jules-web",
+    "test": "npm run test:crypto && npm run test:api",
+    "test:crypto": "node scripts/verify-crypto.mjs",
+    "test:api": "node scripts/verify-api.mjs"
+  },
+  "dependencies": {
+    "blakejs": "^1.2.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "vite": "^7.0.0",
+    "wrangler": "^4.0.0"
+  }
+}

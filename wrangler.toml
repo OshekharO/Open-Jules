@@ -1,0 +1,5 @@
+name = "jules-web"
+compatibility_date = "2025-04-01"
+pages_build_output_dir = "dist"
+
+# No variables, no KV, no D1. Credentials arrive per request and are discarded.
