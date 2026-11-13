@@ -84,8 +84,8 @@ export default function PromptCard({
           <dd>{repo ? repo.fullName : 'Not selected'}</dd>
         </div>
         <div className="target-row">
-          <dt>Ref</dt>
-          <dd>{repo ? repo.defaultBranch : 'Not selected'}</dd>
+          <dt>{branch.trim() ? 'Target branch' : 'Ref'}</dt>
+          <dd>{branch.trim() || (repo ? repo.defaultBranch : 'Not selected')}</dd>
         </div>
         <div className="target-row">
           <dt>Workflow</dt>
@@ -123,30 +123,24 @@ export default function PromptCard({
       ) : null}
 
       {run.status === 'success' && run.result ? (
-        <StatusBanner
-          kind="success"
-          title={`Dispatched to ${run.result.repo} on ${run.result.ref}${
-            run.result.model ? ` using ${run.result.model}` : ''
-          }. GitHub returned 204.`}
-        >
-        <p className="banner-detail">
-          {run.result.branch ? (
-            <>
-              The run is queued now. Changes will be committed to{' '}
-              <code>{run.result.branch}</code>, and the pull request will update automatically.
-            </>
-          ) : (
-            <>
-              The run is queued now. If the agent changes files, it commits them to a new branch and
-              opens a pull request.
-            </>
-          )}{' '}
-          {actionsUrl ? (
-            <a href={actionsUrl} target="_blank" rel="noreferrer">
-              Open the Actions tab
-            </a>
-          ) : null}
-        </p>
+        <StatusBanner kind="success" title={`Run queued for ${run.result.repo}.`}>
+          <p className="banner-detail">
+            {run.result.branch ? (
+              <>
+                Changes will be committed to <code>{run.result.branch}</code>, and its pull request
+                will update automatically.
+              </>
+            ) : (
+              <>
+                If the agent changes files, it commits them to a new branch and opens a pull request.
+              </>
+            )}{' '}
+            {actionsUrl ? (
+              <a href={actionsUrl} target="_blank" rel="noreferrer">
+                Open the Actions tab
+              </a>
+            ) : null}
+          </p>
         </StatusBanner>
       ) : null}
     </section>
