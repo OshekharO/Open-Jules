@@ -63,20 +63,9 @@ jobs:
           git commit -m "Apply Gemini CLI changes from run $GITHUB_RUN_ID [skip ci]"
           git push --set-upstream origin "$branch"
 
-          body_file="$(mktemp)"
-          {
-            echo "Automated changes from the Jules Web Agent workflow (run $GITHUB_RUN_ID)."
-            echo
-            echo '### Prompt'
-            echo
-            echo '\`\`\`'
-            printf '%s\\n' "$USER_PROMPT"
-            echo '\`\`\`'
-          } > "$body_file"
-
           # Bash substring, not \`head\`: head closes the pipe and pipefail turns
           # the resulting SIGPIPE into a step failure for large prompts.
           first_line="\${USER_PROMPT%%$'\\n'*}"
           title="Gemini CLI: \${first_line:0:72}"
-          gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title "$title" --body-file "$body_file"
+          gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title "$title" --body "This PR was created with [Jules Web](https://jules-web.pages.dev). Workflow run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 `;

@@ -73,6 +73,14 @@ assert.ok(
   !WORKFLOW_YAML.includes('head -n 1'),
   'PR title must not use head; pipefail turns its SIGPIPE into a failure',
 );
+assert.ok(
+  !WORKFLOW_YAML.includes('### Prompt'),
+  'PR body must not embed the prompt',
+);
+assert.ok(
+  WORKFLOW_YAML.includes('https://jules-web.pages.dev'),
+  'PR body must credit the web app',
+);
 
 console.log('crypto round-trip OK');
 console.log('sealed box bytes:', sealed.length);

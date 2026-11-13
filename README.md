@@ -164,22 +164,11 @@ jobs:
           git commit -m "Apply Gemini CLI changes from run $GITHUB_RUN_ID [skip ci]"
           git push --set-upstream origin "$branch"
 
-          body_file="$(mktemp)"
-          {
-            echo "Automated changes from the Jules Web Agent workflow (run $GITHUB_RUN_ID)."
-            echo
-            echo '### Prompt'
-            echo
-            echo '```'
-            printf '%s\n' "$USER_PROMPT"
-            echo '```'
-          } > "$body_file"
-
           # Bash substring, not `head`: head closes the pipe and pipefail turns
           # the resulting SIGPIPE into a step failure for large prompts.
           first_line="${USER_PROMPT%%$'\n'*}"
           title="Gemini CLI: ${first_line:0:72}"
-          gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title "$title" --body-file "$body_file"
+          gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title "$title" --body "This PR was created with [Jules Web](https://jules-web.pages.dev). Workflow run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 ```
 
 After the CLI finishes, the second step checks the working tree. If the CLI changed files, it commits them on `jules/run-<run id>`, pushes that branch, and opens a pull request against the dispatched branch. If the CLI made no changes, the step exits without opening a PR. `.gemini/`, `gemini-artifacts/`, `gha-creds-*.json`, `__pycache__/`, `*.pyc`, and `node_modules/` are excluded so the action's own files and build artifacts are never committed.
