@@ -41,6 +41,14 @@ assert.ok(
   WORKFLOW_YAML.startsWith('name: Jules Web Agent\n'),
   'workflow template changed shape',
 );
+assert.ok(
+  WORKFLOW_YAML.includes('google-github-actions/run-gemini-cli@v0'),
+  'workflow template must use the v0 major tag',
+);
+assert.ok(
+  !WORKFLOW_YAML.includes('run-gemini-cli@v1'),
+  'run-gemini-cli has no v1 tag',
+);
 
 console.log('crypto round-trip OK');
 console.log('sealed box bytes:', sealed.length);

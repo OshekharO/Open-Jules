@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: google-github-actions/run-gemini-cli@v1
+      - uses: google-github-actions/run-gemini-cli@v0
         with:
           gemini_api_key: \${{ secrets.GEMINI_API_KEY }}
           prompt: \${{ inputs.user_prompt }}

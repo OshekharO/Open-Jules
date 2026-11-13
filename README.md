@@ -123,13 +123,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: google-github-actions/run-gemini-cli@v1
+      - uses: google-github-actions/run-gemini-cli@v0
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           prompt: ${{ inputs.user_prompt }}
 ```
 
 The file must exist on the repository's default branch for `workflow_dispatch` to find it. Setup writes it to the default branch and Run dispatches with `ref` set to that same branch. If you install the file manually on another branch, dispatch returns `404`.
+
+`run-gemini-cli` is pre-1.0, so its moving major tag is `v0` and there is no `v1`. `v0` currently resolves to `v0.1.22`; pin that exact tag if you want a fixed version. The action's inputs are `gemini_api_key` and `prompt`, which is what the template uses.
 
 ## Security model
 
