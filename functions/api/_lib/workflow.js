@@ -15,6 +15,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    env:
+      # Gemini CLI refuses to run in an untrusted directory. GitHub Actions
+      # checkouts are always untrusted, so mark the workspace trusted.
+      GEMINI_CLI_TRUST_WORKSPACE: 'true'
     steps:
       - uses: actions/checkout@v4
         with:

@@ -119,6 +119,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    env:
+      # Gemini CLI refuses to run in an untrusted directory.
+      GEMINI_CLI_TRUST_WORKSPACE: 'true'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,6 +131,8 @@ jobs:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           prompt: ${{ inputs.user_prompt }}
 ```
+
+The `GEMINI_CLI_TRUST_WORKSPACE` environment variable is required: every `actions/checkout` workspace is untrusted, and Gemini CLI 0.68 refuses to start there. The env var applies to the whole job, including the action's internal step, so the action needs no extra input.
 
 The file must exist on the repository's default branch for `workflow_dispatch` to find it. Setup writes it to the default branch and Run dispatches with `ref` set to that same branch. If you install the file manually on another branch, dispatch returns `404`.
 
@@ -204,6 +209,7 @@ npm test
 | `403` on run, step `dispatch the workflow` | Actions read/write is missing. |
 | `404` on run | The workflow file is not on the default branch, or the token cannot read Actions. |
 | `422` on setup | The workflow file changed on GitHub between the read and the write. Run Setup repo again. |
+| `Gemini CLI is not running in a trusted directory` in the run log | The installed workflow predates the `GEMINI_CLI_TRUST_WORKSPACE` job env. Run Setup repo again, or add that env var to the job by hand. |
 
 ## Project layout
 

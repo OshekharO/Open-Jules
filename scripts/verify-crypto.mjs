@@ -49,6 +49,10 @@ assert.ok(
   !WORKFLOW_YAML.includes('run-gemini-cli@v1'),
   'run-gemini-cli has no v1 tag',
 );
+assert.ok(
+  WORKFLOW_YAML.includes("GEMINI_CLI_TRUST_WORKSPACE: 'true'"),
+  'workflow template must trust the Actions workspace for Gemini CLI',
+);
 
 console.log('crypto round-trip OK');
 console.log('sealed box bytes:', sealed.length);
