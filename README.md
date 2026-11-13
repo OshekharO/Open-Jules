@@ -148,7 +148,7 @@ jobs:
           set -euo pipefail
 
           # The action writes these into the workspace; never commit them.
-          printf '%s\n' '.gemini/' 'gemini-artifacts/' 'gha-creds-*.json' >> .git/info/exclude
+          printf '%s\n' '.gemini/' 'gemini-artifacts/' 'gha-creds-*.json' '__pycache__/' '*.pyc' 'node_modules/' >> .git/info/exclude
 
           if [[ -z "$(git status --porcelain)" ]]; then
             echo 'Gemini CLI made no file changes; skipping pull request.'
@@ -175,11 +175,14 @@ jobs:
             echo '```'
           } > "$body_file"
 
-          title="Gemini CLI: $(printf '%s' "$USER_PROMPT" | head -n 1 | cut -c 1-72)"
+          # Bash substring, not `head`: head closes the pipe and pipefail turns
+          # the resulting SIGPIPE into a step failure for large prompts.
+          first_line="${USER_PROMPT%%$'\n'*}"
+          title="Gemini CLI: ${first_line:0:72}"
           gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title "$title" --body-file "$body_file"
 ```
 
-After the CLI finishes, the second step checks the working tree. If the CLI changed files, it commits them on `jules/run-<run id>`, pushes that branch, and opens a pull request against the dispatched branch. If the CLI made no changes, the step exits without opening a PR. `.gemini/`, `gemini-artifacts/`, and `gha-creds-*.json` are excluded so the action's own files are never committed.
+After the CLI finishes, the second step checks the working tree. If the CLI changed files, it commits them on `jules/run-<run id>`, pushes that branch, and opens a pull request against the dispatched branch. If the CLI made no changes, the step exits without opening a PR. `.gemini/`, `gemini-artifacts/`, `gha-creds-*.json`, `__pycache__/`, `*.pyc`, and `node_modules/` are excluded so the action's own files and build artifacts are never committed.
 
 The `gemini_model` input defaults to `gemini-3.5-flash-lite`. Gemini 2.5 Flash is deprecated and Google routes it to this model from December 1, 2026, so pinning the replacement avoids the deprecation path. The web UI's **Model** field overrides it per run; leave the field blank to use the default. You can also override it from the Actions tab's **Run workflow** form, or by sending `inputs.gemini_model` to the dispatch API.
 

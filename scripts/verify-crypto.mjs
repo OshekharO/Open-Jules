@@ -69,6 +69,10 @@ assert.ok(
   WORKFLOW_YAML.includes('gh pr create'),
   'workflow template must open a pull request',
 );
+assert.ok(
+  !WORKFLOW_YAML.includes('head -n 1'),
+  'PR title must not use head; pipefail turns its SIGPIPE into a failure',
+);
 
 console.log('crypto round-trip OK');
 console.log('sealed box bytes:', sealed.length);
