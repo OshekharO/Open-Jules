@@ -33,6 +33,17 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Ensure Pages project exists
+        # The first deploy needs the project to exist. Later runs find it and skip creation.
+        run: |
+          if npx wrangler pages project list --json | grep -q '"name": *"jules-web"'; then
+            echo "Pages project jules-web already exists."
+          else
+            npx wrangler pages project create jules-web --production-branch main
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
       - name: Deploy to Cloudflare Pages
         # On main this targets the project's production branch. On a pull request
         # it creates a preview deployment named after the PR source branch.

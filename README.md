@@ -80,6 +80,8 @@ Add a Cloudflare API token as a repository secret first:
 1. In the Cloudflare dashboard, create an API token with the **Cloudflare Pages: Edit** permission for the account that owns the project.
 2. In GitHub, open Settings, Secrets and variables, Actions, and add `CLOUDFLARE_API_TOKEN`.
 
+The workflow creates the `jules-web` Pages project on its first run, then deploys to it. To create the project yourself instead, run `npx wrangler pages project create jules-web --production-branch main` once, or use the Cloudflare dashboard under Workers & Pages, Create, Pages, Upload assets. The project must exist before the first deploy, otherwise Wrangler exits with "The Pages project does not exist".
+
 Pushes to `main` deploy to the project's production branch. Pull requests create preview deployments named after the source branch. Fork pull requests do not receive repository secrets, so their deploy step fails by design.
 
 The workflow uses `npm ci` and `npx wrangler`, so the Wrangler version comes from `devDependencies` instead of a global install. The `environment.url` in the workflow points at the default `https://jules-web.pages.dev`; change it if the project uses a custom domain.
