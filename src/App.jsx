@@ -165,31 +165,52 @@ export default function App() {
       </main>
 
       <footer className="shell footer">
-        <div className="footer-brand">
-          <span className="footer-name">Jules Web</span>
-          <p>
-            Runs on Cloudflare Pages Functions. Credentials are used per request and never stored.
-          </p>
+        <div className="footer-inner">
+          <div className="footer-row">
+            <p className="footer-brand">
+              <span className="footer-name">Jules Web</span>
+              <span className="footer-tag">
+                Run Gemini CLI on your repository. Credentials are used per request and never stored.
+              </span>
+            </p>
+            <a
+              className="footer-repo"
+              href="https://github.com/OshekharO/Open-Jules"
+              target="_blank"
+              rel="noreferrer"
+            >
+              https://github.com/OshekharO/Open-Jules
+            </a>
+          </div>
+          <div className="footer-row">
+            <p className="footer-note">Runs on Cloudflare Pages Functions.</p>
+            <nav className="footer-links" aria-label="Documentation">
+              <a
+                href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Token permissions
+              </a>
+              <span aria-hidden="true">·</span>
+              <a
+                href="https://docs.github.com/en/rest/actions/secrets"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Secrets API
+              </a>
+              <span aria-hidden="true">·</span>
+              <a
+                href="https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Workflow syntax
+              </a>
+            </nav>
+          </div>
         </div>
-        <nav className="footer-links" aria-label="Project and documentation">
-          <a href="https://github.com/OshekharO/Open-Jules" target="_blank" rel="noreferrer">
-            github.com/OshekharO/Open-Jules
-          </a>
-          <a
-            href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Token docs
-          </a>
-          <a
-            href="https://docs.github.com/en/rest/actions/secrets"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Actions secrets API
-          </a>
-        </nav>
       </footer>
     </div>
   );
