@@ -53,6 +53,14 @@ assert.ok(
   WORKFLOW_YAML.includes("GEMINI_CLI_TRUST_WORKSPACE: 'true'"),
   'workflow template must trust the Actions workspace for Gemini CLI',
 );
+assert.ok(
+  WORKFLOW_YAML.includes("default: 'gemini-2.5-flash'"),
+  'workflow template must default the model input to gemini-2.5-flash',
+);
+assert.ok(
+  WORKFLOW_YAML.includes('gemini_model: ${{ inputs.gemini_model }}'),
+  'workflow template must pass the model input to the action',
+);
 
 console.log('crypto round-trip OK');
 console.log('sealed box bytes:', sealed.length);

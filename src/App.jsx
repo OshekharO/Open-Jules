@@ -11,6 +11,7 @@ export default function App() {
   const [token, setToken] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [model, setModel] = useState('');
 
   const [repos, setRepos] = useState([]);
   const [repoFullName, setRepoFullName] = useState('');
@@ -67,6 +68,7 @@ export default function App() {
       const data = await postJson('/api/run', {
         repo: repo.fullName,
         prompt,
+        model: model.trim(),
         userToken: token.trim(),
       });
       setRun({ status: 'success', result: data, error: null });
@@ -148,6 +150,8 @@ export default function App() {
           <PromptCard
             prompt={prompt}
             onPromptChange={setPrompt}
+            model={model}
+            onModelChange={setModel}
             repo={repo}
             onRun={handleRun}
             run={run}

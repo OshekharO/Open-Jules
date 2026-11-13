@@ -2,7 +2,16 @@ import StatusBanner, { ErrorDetail } from './StatusBanner.jsx';
 
 const WORKFLOW_FILE = 'jules-web-agent.yml';
 
-export default function PromptCard({ prompt, onPromptChange, repo, onRun, run, canRun }) {
+export default function PromptCard({
+  prompt,
+  onPromptChange,
+  model,
+  onModelChange,
+  repo,
+  onRun,
+  run,
+  canRun,
+}) {
   const actionsUrl = repo ? `https://github.com/${repo.fullName}/actions` : null;
 
   return (
@@ -28,6 +37,25 @@ export default function PromptCard({ prompt, onPromptChange, repo, onRun, run, c
         />
       </div>
 
+      <div className="field">
+        <label className="label" htmlFor="model-input">
+          Model
+        </label>
+        <input
+          id="model-input"
+          className="input"
+          type="text"
+          value={model}
+          placeholder="gemini-2.5-flash"
+          onChange={(event) => onModelChange(event.target.value)}
+          spellCheck="false"
+          autoComplete="off"
+        />
+        <p className="hint">
+          Optional. Blank uses the workflow default, <code>gemini-2.5-flash</code>.
+        </p>
+      </div>
+
       <dl className="target" aria-label="Dispatch target">
         <div className="target-row">
           <dt>Repository</dt>
@@ -45,8 +73,8 @@ export default function PromptCard({ prompt, onPromptChange, repo, onRun, run, c
 
       <div className="run-row">
         <p className="hint">
-          Dispatches the workflow with your prompt as the <code>user_prompt</code> input. The
-          workflow must exist on the ref shown above.
+          Dispatches the workflow with your prompt and model as inputs. The workflow must exist on
+          the ref shown above.
         </p>
         <button
           type="button"
@@ -75,7 +103,9 @@ export default function PromptCard({ prompt, onPromptChange, repo, onRun, run, c
       {run.status === 'success' && run.result ? (
         <StatusBanner
           kind="success"
-          title={`Dispatched to ${run.result.repo} on ${run.result.ref}. GitHub returned 204.`}
+          title={`Dispatched to ${run.result.repo} on ${run.result.ref}${
+            run.result.model ? ` using ${run.result.model}` : ''
+          }. GitHub returned 204.`}
         >
           <p className="banner-detail">
             The run is queued now.{' '}

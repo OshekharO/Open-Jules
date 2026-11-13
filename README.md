@@ -6,7 +6,7 @@ The flow is three steps:
 
 1. Enter a GitHub token and a Gemini API key.
 2. Pick a repository and run **Setup repo**. This writes the encrypted `GEMINI_API_KEY` repository secret and installs `.github/workflows/jules-web-agent.yml` on the repository's default branch.
-3. Enter a prompt and run **Run task**. This dispatches the workflow with the prompt as the `user_prompt` input.
+3. Enter a prompt, optionally set a model, and run **Run task**. This dispatches the workflow with the prompt and model as inputs.
 
 ## Stack
 
@@ -113,6 +113,11 @@ on:
         description: 'Prompt for Gemini CLI'
         required: true
         type: string
+      gemini_model:
+        description: 'Gemini model to run'
+        required: false
+        default: 'gemini-2.5-flash'
+        type: string
 jobs:
   run-gemini:
     runs-on: ubuntu-latest
@@ -130,13 +135,16 @@ jobs:
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           prompt: ${{ inputs.user_prompt }}
+          gemini_model: ${{ inputs.gemini_model }}
 ```
+
+The `gemini_model` input defaults to `gemini-2.5-flash` because the CLI's default model is frequently capacity-limited on the free Gemini API key tier. The web UI's **Model** field overrides it per run; leave the field blank to use the default. You can also override it from the Actions tab's **Run workflow** form, or by sending `inputs.gemini_model` to the dispatch API.
 
 The `GEMINI_CLI_TRUST_WORKSPACE` environment variable is required: every `actions/checkout` workspace is untrusted, and Gemini CLI 0.68 refuses to start there. The env var applies to the whole job, including the action's internal step, so the action needs no extra input.
 
 The file must exist on the repository's default branch for `workflow_dispatch` to find it. Setup writes it to the default branch and Run dispatches with `ref` set to that same branch. If you install the file manually on another branch, dispatch returns `404`.
 
-`run-gemini-cli` is pre-1.0, so its moving major tag is `v0` and there is no `v1`. `v0` currently resolves to `v0.1.22`; pin that exact tag if you want a fixed version. The action's inputs are `gemini_api_key` and `prompt`, which is what the template uses.
+`run-gemini-cli` is pre-1.0, so its moving major tag is `v0` and there is no `v1`. `v0` currently resolves to `v0.1.22`; pin that exact tag if you want a fixed version. The template uses the action's `gemini_api_key`, `prompt`, and `gemini_model` inputs.
 
 ## Security model
 
@@ -184,10 +192,12 @@ Each step is `created` or `updated`. On failure the response carries `error`, `s
 ### `POST /api/run`
 
 ```json
-{ "repo": "owner/name", "prompt": "...", "userToken": "github_pat_..." }
+{ "repo": "owner/name", "prompt": "...", "userToken": "github_pat_...", "model": "gemini-2.5-flash" }
 ```
 
-Returns `{ ok: true, repo, ref, workflowPath }` on the `204` from GitHub. Failures use the same shape as `/api/setup`.
+`model` is optional. It must match `^[A-Za-z0-9._:-]+$` and be at most 100 characters. When it is blank or omitted, the request sends no `gemini_model` input, so the workflow's default applies.
+
+Returns `{ ok: true, repo, ref, model, workflowPath }` on the `204` from GitHub. `model` is the value sent, or the workflow default when the field is blank. Failures use the same shape as `/api/setup`.
 
 ## Tests
 
@@ -196,7 +206,7 @@ npm test
 ```
 
 - `scripts/verify-crypto.mjs` seals a message, opens it with the recipient secret key, checks the base64 round trip, and asserts the workflow template kept its GitHub expressions.
-- `scripts/verify-api.mjs` mocks the GitHub API, runs `onRequestPost` for setup and run, decrypts the `encrypted_value` that setup sends, checks the workflow PUT carries `sha` only when the file exists, and checks that a GitHub `403` body reaches the client unchanged.
+- `scripts/verify-api.mjs` mocks the GitHub API, runs `onRequestPost` for setup and run, decrypts the `encrypted_value` that setup sends, checks the workflow PUT carries `sha` only when the file exists, checks the model input is forwarded when set and omitted when blank, rejects a malformed model, and checks that a GitHub `403` body reaches the client unchanged.
 
 ## Troubleshooting
 
@@ -210,6 +220,7 @@ npm test
 | `404` on run | The workflow file is not on the default branch, or the token cannot read Actions. |
 | `422` on setup | The workflow file changed on GitHub between the read and the write. Run Setup repo again. |
 | `Gemini CLI is not running in a trusted directory` in the run log | The installed workflow predates the `GEMINI_CLI_TRUST_WORKSPACE` job env. Run Setup repo again, or add that env var to the job by hand. |
+| `503 ... This model is currently experiencing high demand` after 10 retries | Google's side is out of capacity. The CLI already retried for about five minutes. Re-run the workflow; the template already uses `gemini-2.5-flash` for this reason. |
 
 ## Project layout
 

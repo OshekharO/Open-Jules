@@ -1,5 +1,7 @@
 export const WORKFLOW_PATH = '.github/workflows/jules-web-agent.yml';
 
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+
 // Escaped \${ keeps GitHub expression syntax literal inside a JS template string.
 export const WORKFLOW_YAML = `name: Jules Web Agent
 on:
@@ -8,6 +10,11 @@ on:
       user_prompt:
         description: 'Prompt for Gemini CLI'
         required: true
+        type: string
+      gemini_model:
+        description: 'Gemini model to run'
+        required: false
+        default: '${DEFAULT_GEMINI_MODEL}'
         type: string
 jobs:
   run-gemini:
@@ -27,4 +34,5 @@ jobs:
         with:
           gemini_api_key: \${{ secrets.GEMINI_API_KEY }}
           prompt: \${{ inputs.user_prompt }}
+          gemini_model: \${{ inputs.gemini_model }}
 `;

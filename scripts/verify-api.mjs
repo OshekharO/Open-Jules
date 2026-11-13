@@ -6,7 +6,7 @@ import { onRequestPost as setup } from '../functions/api/setup.js';
 import { onRequestPost as run } from '../functions/api/run.js';
 import { onRequestPost as listRepos } from '../functions/api/repos.js';
 import { base64ToBytes, bytesToBase64 } from '../functions/api/_lib/http.js';
-import { WORKFLOW_PATH, WORKFLOW_YAML } from '../functions/api/_lib/workflow.js';
+import { DEFAULT_GEMINI_MODEL, WORKFLOW_PATH, WORKFLOW_YAML } from '../functions/api/_lib/workflow.js';
 
 const TOKEN = 'github_pat_test_token';
 const GEMINI_KEY = 'AIza-test-gemini-key';
@@ -180,13 +180,52 @@ function openSealed(sealed) {
   assert.equal(result.status, 200);
   assert.equal(result.data.ok, true);
   assert.equal(result.data.ref, 'main');
+  assert.equal(result.data.model, DEFAULT_GEMINI_MODEL);
 
   const dispatch = calls.find((call) => call.method === 'POST' && call.href.endsWith('/dispatches'));
   const payload = JSON.parse(dispatch.body);
   assert.equal(payload.ref, 'main');
   assert.equal(payload.inputs.user_prompt, 'Add a setup section to the README');
+  assert.equal('gemini_model' in payload.inputs, false, 'blank model must use the workflow default');
 
   console.log('run dispatch OK');
+}
+
+// Run: an explicit model is forwarded to the workflow.
+{
+  const calls = installGithubMock({ fileExists: true });
+  const result = await post(run, {
+    repo: 'acme/widgets',
+    prompt: 'hello',
+    model: 'gemini-2.5-pro',
+    userToken: TOKEN,
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.data.model, 'gemini-2.5-pro');
+
+  const dispatch = calls.find((call) => call.method === 'POST' && call.href.endsWith('/dispatches'));
+  const payload = JSON.parse(dispatch.body);
+  assert.equal(payload.inputs.gemini_model, 'gemini-2.5-pro');
+
+  console.log('run with model OK');
+}
+
+// Run: a malformed model is rejected before any GitHub call.
+{
+  const calls = installGithubMock({ fileExists: true });
+  const result = await post(run, {
+    repo: 'acme/widgets',
+    prompt: 'hello',
+    model: 'gemini 2.5 pro',
+    userToken: TOKEN,
+  });
+
+  assert.equal(result.status, 400);
+  assert.match(result.data.error, /Model must use only/);
+  assert.equal(calls.length, 0);
+
+  console.log('run rejects bad model OK');
 }
 
 // Run: a GitHub 403 body must reach the client unchanged.
