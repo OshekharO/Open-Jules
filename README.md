@@ -6,7 +6,7 @@ Jules Web runs Gemini CLI on a GitHub repository through GitHub Actions. Each us
 
 1. Enter a GitHub token and a Gemini API key.
 2. Pick a repository and run **Setup repo**. This writes the encrypted `GEMINI_API_KEY` repository secret and installs `.github/workflows/jules-web-agent.yml` on the repository's default branch.
-3. Write a prompt, optionally choose a model and an existing branch, and run **Run task**. The workflow edits the checkout and either opens a pull request or commits to the existing branch.
+3. Write a prompt, optionally choose a model and an existing branch, and run **Run task**. The workflow edits the checkout and either opens a pull request or commits to the existing branch. The app polls the run until it finishes and links to its log.
 
 ## Stack
 
@@ -17,7 +17,7 @@ Jules Web runs Gemini CLI on a GitHub repository through GitHub Actions. Each us
 
 ## How it works
 
-`/api/repos` lists the repositories the token can reach. `/api/setup` writes the Gemini key as an encrypted repository secret and installs the workflow file. `/api/run` dispatches the workflow.
+`/api/repos` lists the repositories the token can reach. `/api/setup` writes the Gemini key as an encrypted repository secret and installs the workflow file. `/api/run` dispatches the workflow, and `/api/run-status` reports the run that dispatch started.
 
 ```
 Browser (React state only)
@@ -30,6 +30,9 @@ Browser (React state only)
                     -> PUT    /repos/{owner}/{repo}/contents/.github/workflows/jules-web-agent.yml
   POST /api/run     -> GET    /repos/{owner}/{repo}
                     -> POST   /repos/{owner}/{repo}/actions/workflows/jules-web-agent.yml/dispatches
+  POST /api/run-status
+                    -> GET    /repos/{owner}/{repo}/actions/workflows/jules-web-agent.yml/runs
+                    -> GET    /repos/{owner}/{repo}/actions/runs/{run_id}
 ```
 
 `workflow_dispatch` answers `204 No Content` on success, not `200`. The function treats both as success and returns GitHub's error body unchanged when the dispatch fails.
@@ -273,9 +276,19 @@ Each step is `created` or `updated`. On failure the response carries `error`, `s
 
 `branch` is optional. When set, it is forwarded as the `branch` dispatch input, and the workflow checks that branch out, commits on it, and pushes, which updates its pull request. It must be a branch name, not a full ref: `refs/...`, values over 255 characters, names containing `..`, names ending in `/`, and names starting with `-` are rejected, and so is the repository's default branch. When blank or omitted, the response's `branch` is `null`.
 
-The response returns `{ ok: true, repo, ref, model, branch, workflowPath }` after GitHub answers `204`. `model` is the value sent, or the workflow default when the field is blank. Failures use the same shape as `/api/setup`.
+The response returns `{ ok: true, repo, ref, model, branch, workflowPath, dispatchedAt }` after GitHub answers `204`. `model` is the value sent, or the workflow default when the field is blank. `dispatchedAt` is the time the dispatch was accepted, and the client passes it to `/api/run-status` to find the run. Failures use the same shape as `/api/setup`.
 
 The response returns as soon as the dispatch is accepted. The workflow then runs the CLI and, if it changed files, either commits to the supplied `branch` or creates `jules/run-<run id>` and opens a pull request. The commit log and the PR URL are printed in the Actions run log; the API does not wait for them.
+
+### `POST /api/run-status`
+
+```json
+{ "repo": "owner/name", "userToken": "github_pat_...", "since": "2026-11-13T06:40:00.000Z", "runId": 43373690605, "branch": "main" }
+```
+
+`runId` and `branch` are optional. With `runId`, the function reads that single run. Without it, the function lists the workflow's `workflow_dispatch` runs on `branch` (when given) and returns the newest one created at or after `since`. `since` is the dispatch timestamp; a 30 second skew allowance covers clock differences between the Pages host and GitHub.
+
+Returns `{ ok: true, run: { id, status, conclusion, event, headBranch, displayName, htmlUrl, createdAt, updatedAt } }`, or `{ ok: true, run: null }` when no run has appeared yet. The client polls every ten seconds until `status` is `completed`, then reports `success` or `failure` and links to the run. Failures use the same shape as `/api/setup`.
 
 ## Tests
 
@@ -284,7 +297,7 @@ npm test
 ```
 
 - `scripts/verify-crypto.mjs` seals a message, opens it with the recipient secret key, checks the base64 round trip, and asserts the workflow template kept its GitHub expressions, the `branch` input, the `ref` checkout, and both push paths.
-- `scripts/verify-api.mjs` mocks the GitHub API, runs `onRequestPost` for setup and run, decrypts the `encrypted_value` that setup sends, checks the workflow PUT carries `sha` only when the file exists, checks the model input is forwarded when set and omitted when blank, rejects a malformed model, checks that `branch` is forwarded and that bad branch names, `refs/...`, and the default branch are rejected, and checks that a GitHub `403` body reaches the client unchanged.
+- `scripts/verify-api.mjs` mocks the GitHub API, runs `onRequestPost` for setup, run, and run status, decrypts the `encrypted_value` that setup sends, checks the workflow PUT carries `sha` only when the file exists, checks the model input is forwarded when set and omitted when blank, rejects a malformed model, checks that `branch` is forwarded and that bad branch names, `refs/...`, and the default branch are rejected, checks that a GitHub `403` body reaches the client unchanged, and checks that run status finds the newest dispatch after `since`, ignores older runs, filters by branch, reads a run by id, rejects malformed payloads, and passes a `403` through.
 
 ## Troubleshooting
 
@@ -313,11 +326,13 @@ functions/
     repos.js          POST /api/repos
     setup.js          POST /api/setup
     run.js            POST /api/run
+    run-status.js     POST /api/run-status
 public/
   _routes.json        Limits Function invocation to /api/*
 src/
   App.jsx             Form state and request handling
   api.js              fetch wrapper and error details
+  useRunStatus.js     Polls /api/run-status until the run finishes
   components/         Credentials, Repository, Prompt, Permissions, Status
   styles.css
 scripts/              Crypto and API verification
@@ -328,7 +343,7 @@ Files and directories under `functions/` that start with an underscore are not r
 
 ## Limits
 
-- This is v1: there is no run status polling. The UI reports the dispatch result and links to the Actions tab.
+- This is v1: run status polling covers the run itself, not the live log. The UI polls every ten seconds until the run completes, then links to the run log for the step output.
 - The workflow commits to a new branch and opens a pull request, or commits to the branch named in **Branch to update**; it never pushes to the branch it was dispatched on.
 - The GitHub token is scoped to whatever the user grants it. The app asks for the five permissions above and nothing else.
 - The frontend sends credentials over the same origin, so a deployed instance needs HTTPS, which Cloudflare Pages provides by default.

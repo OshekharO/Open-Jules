@@ -68,6 +68,10 @@ export async function onRequestPost(context) {
   if (model) inputs.gemini_model = model;
   if (branch) inputs.branch = branch;
 
+  // GitHub does not return the run ID from workflow_dispatch. The UI uses this
+  // timestamp to find the new run in the workflow run list.
+  const dispatchedAt = new Date().toISOString();
+
   const dispatchResponse = await githubFetch(
     token,
     `${repoPath}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
@@ -84,6 +88,7 @@ export async function onRequestPost(context) {
       model: model || DEFAULT_GEMINI_MODEL,
       branch: branch || null,
       workflowPath: WORKFLOW_PATH,
+      dispatchedAt,
     });
   }
 

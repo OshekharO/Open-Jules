@@ -4,6 +4,7 @@ import { blake2b } from 'blakejs';
 
 import { onRequestPost as setup } from '../functions/api/setup.js';
 import { onRequestPost as run } from '../functions/api/run.js';
+import { onRequestPost as runStatus } from '../functions/api/run-status.js';
 import { onRequestPost as listRepos } from '../functions/api/repos.js';
 import { base64ToBytes, bytesToBase64 } from '../functions/api/_lib/http.js';
 import { DEFAULT_GEMINI_MODEL, WORKFLOW_PATH, WORKFLOW_YAML } from '../functions/api/_lib/workflow.js';
@@ -47,6 +48,27 @@ function installGithubMock({ fileExists = true } = {}) {
       return jsonResponse({ content: { sha: 'newsha' } }, 201);
     }
     return jsonResponse({ message: `unexpected call: ${method} ${href}` }, 500);
+  };
+  return calls;
+}
+
+function installRunListMock(runs) {
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    calls.push({ href });
+
+    if (href.includes('/actions/workflows/jules-web-agent.yml/runs')) {
+      return jsonResponse({ workflow_runs: runs });
+    }
+
+    const single = /\/actions\/runs\/(\d+)$/.exec(href);
+    if (single) {
+      const run = runs.find((item) => item.id === Number(single[1]));
+      return run ? jsonResponse(run) : jsonResponse({ message: 'Not Found' }, 404);
+    }
+
+    return jsonResponse({ message: `unexpected call: ${href}` }, 500);
   };
   return calls;
 }
@@ -308,6 +330,140 @@ function openSealed(sealed) {
   assert.match(result.data.githubBody, /workflow` scope/);
 
   console.log('run 403 passthrough OK');
+}
+
+const RUN_IN_PROGRESS = {
+  id: 43373690605,
+  status: 'in_progress',
+  conclusion: null,
+  event: 'workflow_dispatch',
+  head_branch: 'main',
+  display_title: 'Add a setup section to the README',
+  html_url: 'https://github.com/acme/widgets/actions/runs/43373690605',
+  created_at: '2026-11-13T06:40:00Z',
+  updated_at: '2026-11-13T06:40:05Z',
+};
+
+// Run status: the newest dispatched run after the dispatch timestamp wins.
+{
+  const calls = installRunListMock([
+    RUN_IN_PROGRESS,
+    { ...RUN_IN_PROGRESS, id: 43373690600, created_at: '2026-11-13T06:00:00Z' },
+  ]);
+
+  const result = await post(runStatus, {
+    repo: 'acme/widgets',
+    userToken: TOKEN,
+    since: '2026-11-13T06:39:00Z',
+    branch: 'main',
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.data.run.id, RUN_IN_PROGRESS.id);
+  assert.equal(result.data.run.status, 'in_progress');
+  assert.equal(result.data.run.headBranch, 'main');
+  assert.equal(result.data.run.htmlUrl, RUN_IN_PROGRESS.html_url);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].href, /per_page=30/);
+  assert.match(calls[0].href, /event=workflow_dispatch/);
+  assert.match(calls[0].href, /branch=main/);
+  assert.ok(
+    !JSON.stringify(result.data).includes(TOKEN),
+    'run status response leaked the GitHub token',
+  );
+
+  console.log('run status finds the dispatched run OK');
+}
+
+// Run status: a run from before the dispatch does not match.
+{
+  installRunListMock([{ ...RUN_IN_PROGRESS, created_at: '2026-11-13T05:00:00Z' }]);
+
+  const result = await post(runStatus, {
+    repo: 'acme/widgets',
+    userToken: TOKEN,
+    since: '2026-11-13T06:39:00Z',
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.data.run, null);
+
+  console.log('run status ignores older runs OK');
+}
+
+// Run status: the branch filter is applied locally as well as in the query.
+{
+  installRunListMock([{ ...RUN_IN_PROGRESS, head_branch: 'other' }]);
+
+  const result = await post(runStatus, {
+    repo: 'acme/widgets',
+    userToken: TOKEN,
+    since: '2026-11-13T06:39:00Z',
+    branch: 'main',
+  });
+
+  assert.equal(result.data.run, null);
+
+  console.log('run status filters by branch OK');
+}
+
+// Run status: a known run id reads that run directly.
+{
+  const calls = installRunListMock([{ ...RUN_IN_PROGRESS, status: 'completed', conclusion: 'success' }]);
+
+  const result = await post(runStatus, {
+    repo: 'acme/widgets',
+    userToken: TOKEN,
+    runId: 43373690605,
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.data.run.status, 'completed');
+  assert.equal(result.data.run.conclusion, 'success');
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].href, /\/actions\/runs\/43373690605$/);
+
+  console.log('run status by id OK');
+}
+
+// Run status: malformed payloads are rejected before any GitHub call.
+{
+  const calls = installRunListMock([]);
+
+  for (const payload of [
+    { repo: 'acme/widgets', userToken: TOKEN },
+    { repo: 'acme/widgets', userToken: TOKEN, since: 'not-a-date' },
+    { repo: 'acme/widgets', userToken: TOKEN, runId: 0 },
+    { repo: 'acme/widgets', userToken: TOKEN, runId: 'abc' },
+    { repo: 'acme', userToken: TOKEN, since: '2026-11-13T06:39:00Z' },
+    { repo: 'acme/widgets', since: '2026-11-13T06:39:00Z' },
+  ]) {
+    const result = await post(runStatus, payload);
+    assert.equal(result.status, 400, `payload must be rejected: ${JSON.stringify(payload)}`);
+  }
+
+  assert.equal(calls.length, 0, 'invalid payloads must not call GitHub');
+
+  console.log('run status validation OK');
+}
+
+// Run status: a GitHub 403 body must reach the client unchanged.
+{
+  globalThis.fetch = async () =>
+    jsonResponse({ message: 'Resource not accessible by integration' }, 403);
+
+  const result = await post(runStatus, {
+    repo: 'acme/widgets',
+    userToken: TOKEN,
+    since: '2026-11-13T06:39:00Z',
+  });
+
+  assert.equal(result.status, 502);
+  assert.equal(result.data.ok, false);
+  assert.equal(result.data.githubStatus, 403);
+  assert.match(result.data.githubBody, /not accessible/);
+
+  console.log('run status 403 passthrough OK');
 }
 
 console.log('api verification complete');

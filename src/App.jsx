@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { errorDetails, postJson } from './api.js';
+import useRunStatus from './useRunStatus.js';
 import CredentialsCard from './components/CredentialsCard.jsx';
 import PermissionsGuide from './components/PermissionsGuide.jsx';
 import PromptCard from './components/PromptCard.jsx';
@@ -20,6 +21,7 @@ export default function App() {
 
   const [setup, setSetup] = useState({ status: 'idle', result: null, error: null });
   const [run, setRun] = useState({ status: 'idle', result: null, error: null });
+  const runStatus = useRunStatus();
 
   const repo = repos.find((item) => item.fullName === repoFullName) || null;
   const credentialsReady = token.trim().length > 0 && geminiKey.trim().length > 0;
@@ -45,6 +47,7 @@ export default function App() {
     setRepoFullName(fullName);
     setSetup({ status: 'idle', result: null, error: null });
     setRun({ status: 'idle', result: null, error: null });
+    runStatus.reset();
   }
 
   async function handleSetup() {
@@ -74,6 +77,12 @@ export default function App() {
         userToken: token.trim(),
       });
       setRun({ status: 'success', result: data, error: null });
+      runStatus.start({
+        token: token.trim(),
+        repo: repo.fullName,
+        branch: data.ref,
+        since: data.dispatchedAt,
+      });
     } catch (error) {
       setRun({ status: 'error', result: null, error: errorDetails(error) });
     }
@@ -157,6 +166,7 @@ export default function App() {
             repo={repo}
             onRun={handleRun}
             run={run}
+            runState={runStatus.state}
             canRun={canRun}
           />
         </div>
